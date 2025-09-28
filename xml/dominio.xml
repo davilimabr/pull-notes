@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+REGRAS PARA O LLM (one-shot):
+1) Use apenas informações presentes no repositório (README, docs, código, configs, CI/CD).
+2) Se um campo não puder ser determinado com alta confiança, deixe o texto vazio e reduza o 'confidence'.
+3) Não invente bibliotecas, nomes próprios, métricas ou integrações que não estejam explícitas.
+4) Preencha <evidence> com as fontes/trechos usados (arquivos/paths e/ou linhas).
+5) Para <domain>, gere primeiro os ANCHORS (<domainAnchors>), depois derive labels/other.
+-->
+
+<projectProfile version="1.1" schema="project-profile.xsd">
+  <metadata>
+    <repo>
+      <url></url>               <!-- ex.: https://github.com/org/repo -->
+      <default_branch></default_branch> <!-- ex.: main -->
+      <commit_sha></commit_sha> <!-- sha analisado -->
+    </repo>
+    <generated>
+      <timestamp></timestamp>   <!-- ISO 8601, ex.: 2025-09-28T16:00:00-03:00 -->
+      <tool></tool>             <!-- seu pipeline/CLI -->
+      <model></model>           <!-- ex.: "flan-t5-base", "gemma-2-2b" -->
+    </generated>
+  </metadata>
+
+  <!-- O que é o projeto? -->
+  <projectType
+      kind="framework|library|cli|web_app|web_service|mobile_app|desktop_app|data_pipeline|infrastructure|package|other">
+    <label></label>             <!-- rótulo humano curto; ex.: "web service REST em Node.js" -->
+    <confidence></confidence>   <!-- 0.0 a 1.0 -->
+    <rationale></rationale>     <!-- por que chegou a esse tipo (máx. ~400 chars) -->
+  </projectType>
+
+  <!-- DOMÍNIO: modelo “livre, mas seguro” com ANCHORS primeiro -->
+  <domain>
+    <!-- 1) ANCORAGEM (preencher primeiro): termos e artefatos observáveis no repositório -->
+    <domainAnchors>
+      <keywords>
+        <!-- Forneça pelo menos 2 <kw>. Use source com arquivo:linha(s) ou seção. -->
+        <kw source=""></kw>
+        <kw source=""></kw>
+        <!-- <kw source="README.md#Overview">inventory</kw> -->
+        <!-- <kw source="src/services/StockService.cs:12-40">warehouse</kw> -->
+      </keywords>
+      <artifacts>
+        <!-- Liste artefatos detectáveis: tabelas, eventos, endpoints, filas, serviços, arquivos, etc. -->
+        <artifact kind="db_table|topic|queue|api_endpoint|event|service|file|config" name=""/>
+        <!-- <artifact kind="api_endpoint" name="POST /items"/> -->
+        <!-- <artifact kind="event" name="StockDepleted"/> -->
+      </artifacts>
+    </domainAnchors>
+
+    <!-- 2) RÓTULOS CONTROLADOS (até 3) derivados dos anchors -->
+    <!-- Regras: use no máximo 3 labels; weight ∈ [0,1]; soma dos weights ≤ 1. -->
+    <labels>
+      <!-- exemplos de vocabulário: inventory_control, crm, finance, education, health,
+           ecommerce, social, devtool, operations, multimedia, iot, security, analytics -->
+      <label name="" weight=""/>
+      <!-- <label name="inventory_control" weight="0.82"/> -->
+    </labels>
+
+    <!-- 3) CATEGORIA LIVRE OPCIONAL (usar somente se necessário, ver regras abaixo) -->
+    <!-- Use <other> se (a) nenhum label tiver weight ≥ 0.6 OU (b) o domínio for muito específico. -->
+    <!-- Exigir ≥2 <term> em <source_terms>; name com no máx. 5 palavras, evitando genéricos. -->
+    <other>
+      <name></name>
+      <confidence></confidence>
+      <source_terms>
+        <term></term>
+        <term></term>
+      </source_terms>
+      <rationale></rationale>
+    </other>
+
+    <!-- Confiança e justificativa globais para o domínio (com base nos anchors e evidências) -->
+    <confidence></confidence>   <!-- 0.0 a 1.0 -->
+    <rationale></rationale>     <!-- referencie os anchors/evidências (máx. ~400 chars) -->
+  </domain>
+
+  <!-- Detalhes do domínio (curto, factual) -->
+  <domainDetails>
+    <summary></summary>         <!-- 1–3 frases objetivas sobre o problema que o projeto resolve -->
+    <entities>                  <!-- entidades do domínio mencionadas no repo -->
+      <entity></entity>         <!-- ex.: Produto -->
+      <entity></entity>         <!-- ex.: Pedido -->
+    </entities>
+    <coreTasks>                 <!-- tarefas/funcionalidades principais -->
+      <task></task>             <!-- ex.: "cadastrar produto" -->
+      <task></task>
+    </coreTasks>
+    <actors>                    <!-- perfis de usuário ou sistemas consumidores -->
+      <actor></actor>           <!-- ex.: "estoquista", "serviço externo X" -->
+    </actors>
+    <integrations>              <!-- integrações explícitas (APIs, DBs, filas) -->
+      <integration></integration> <!-- ex.: "PostgreSQL", "Stripe API" -->
+    </integrations>
+    <nonFunctional>             <!-- requisitos/qualidades citados -->
+      <nfr></nfr>               <!-- ex.: "alta disponibilidade", "auth JWT" -->
+    </nonFunctional>
+    <confidence></confidence>   <!-- 0.0 a 1.0 (detalhes como um todo) -->
+    <rationale></rationale>     <!-- explique brevemente as fontes dos detalhes -->
+  </domainDetails>
+
+  <!-- Evidências: aponte arquivos/linhas ou seções usadas para suportar cada campo -->
+  <evidence>
+    <item field="projectType">
+      <source></source>         <!-- ex.: README.md#Overview -->
+      <snippet></snippet>       <!-- trecho curto literal ou referência de linha -->
+    </item>
+    <item field="domain.domainAnchors">
+      <source></source>
+      <snippet></snippet>
+    </item>
+    <item field="domain.labels|domain.other|domain.domainOntology">
+      <source></source>
+      <snippet></snippet>
+    </item>
+    <item field="domainDetails">
+      <source></source>
+      <snippet></snippet>
+    </item>
+  </evidence>
+</projectProfile>

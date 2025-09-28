@@ -1,0 +1,47 @@
+<!-- project-profile.xsd (XSD 1.0) -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+  <xsd:simpleType name="ConfidenceType">
+    <xsd:restriction base="xsd:decimal">
+      <xsd:minInclusive value="0.0"/>
+      <xsd:maxInclusive value="1.0"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="ProjectKindEnum">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="framework"/>
+      <xsd:enumeration value="web_service"/>
+      <xsd:enumeration value="web_app"/>
+      <xsd:enumeration value="mobile_app"/>
+      <xsd:enumeration value="desktop_app"/>
+      <xsd:enumeration value="data_pipeline"/>
+      <xsd:enumeration value="infrastructure"/>
+      <xsd:enumeration value="cli"/>
+      <xsd:enumeration value="library"/>
+      <xsd:enumeration value="package"/>
+      <xsd:enumeration value="other"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:element name="projectProfile">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="metadata" type="xsd:string"/>
+        <xsd:element name="projectType" type="ProjectType"/>
+        <!-- ...demais seções... -->
+      </xsd:sequence>
+      <xsd:attribute name="version" type="xsd:string" use="required"/>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:complexType name="ProjectType">
+    <xsd:sequence>
+      <xsd:element name="label" type="xsd:string"/>
+      <xsd:element name="confidence" type="ConfidenceType"/>
+      <xsd:element name="rationale" type="xsd:string" minOccurs="0"/>
+    </xsd:sequence>
+    <xsd:attribute name="kind" type="ProjectKindEnum" use="required"/>
+  </xsd:complexType>
+
+</xsd:schema>

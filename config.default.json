@@ -1,0 +1,39 @@
+{
+  "commit_types": {
+    "feat": { "label": "Features", "patterns": ["^feat(\\(|:|$)", "^feature(\\(|:|$)"] },
+    "fix": { "label": "Fixes", "patterns": ["^fix(\\(|:|$)", "^bugfix(\\(|:|$)"] },
+    "docs": { "label": "Docs", "patterns": ["^docs(\\(|:|$)"] },
+    "refactor": { "label": "Refactors", "patterns": ["^refactor(\\(|:|$)"] },
+    "perf": { "label": "Performance", "patterns": ["^perf(\\(|:|$)"] },
+    "test": { "label": "Tests", "patterns": ["^test(\\(|:|$)"] },
+    "build": { "label": "Build", "patterns": ["^build(\\(|:|$)"] },
+    "ci": { "label": "CI", "patterns": ["^ci(\\(|:|$)"] },
+    "style": { "label": "Style", "patterns": ["^style(\\(|:|$)"] },
+    "chore": { "label": "Chores", "patterns": ["^chore(\\(|:|$)"] },
+    "revert": { "label": "Reverts", "patterns": ["^revert(\\(|:|$)"] }
+  },
+  "other_label": "Other",
+  "importance": {
+    "weight_lines": 0.02,
+    "weight_files": 0.6,
+    "keyword_bonus": { "breaking": 3.0, "security": 2.0, "perf": 1.0, "hotfix": 2.0 }
+  },
+  "importance_bands": [
+    { "name": "low", "min": 0.0 },
+    { "name": "medium", "min": 3.0 },
+    { "name": "high", "min": 6.0 },
+    { "name": "critical", "min": 9.0 }
+  ],
+  "diff": { "max_bytes": 12000, "max_lines": 200 },
+  "domain": {
+    "template_path": "xml/dominio.xml",
+    "xsd_path": "xml/XSD_dominio.xml",
+    "output_path": ".gerador/domain.xml",
+    "model": "gpt-oss:20b",
+    "max_total_bytes": 400000
+  },
+  "templates": { "pr": "templates/pr.md", "release": "templates/release.md" },
+  "output": { "dir": "out" },
+  "language": "pt-BR",
+  "llm_model": "gpt-oss:20b"
+}

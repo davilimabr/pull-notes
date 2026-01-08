@@ -1,22 +1,17 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Preenche um arquivo XML de domínio a partir da análise de um repositório,
 usando Ollama (modelo local) e valida o resultado com XSD.
 
-Uso:
-  python preencher_dominio.py /caminho/para/repo
+Uso: python preencher_dominio.py /caminho/para/repo
 
-Requisitos:
-  pip install lxml ollama
+Requisitos: pip install lxml ollama
 """
 
 import argparse
 import os
+import pathlib
 import re
 import sys
-import json
-import pathlib
 from typing import List, Tuple, Dict, Iterable
 from collections import Counter, defaultdict
 
@@ -24,30 +19,26 @@ from lxml import etree
 from ollama import chat
 from ollama import ChatResponse
 
-# === CONFIGS FIXAS (ajuste aqui) ============================================
+TEMPLATE_XML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xml", "dominio.xml")
 
-# Caminho fixo do template XML (modelo com placeholders)
-TEMPLATE_XML_PATH = "C:\\Users\\Davi\\Desktop\\PG1\\xml\\dominio.xml"
+XSD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xml", "XSD_dominio.xml")
 
-# Caminho fixo do XSD (esquema do template)
-XSD_PATH = "C:\\Users\\Davi\\Desktop\\PG1\\xml\\XSD_dominio.xml"
+MODEL_NAME = "gpt-oss:20b-cloud"
 
-# Nome do modelo no Ollama (ajuste conforme instalado localmente)
-# Exemplos: "gemma:2b", "llama3.1:8b", "phi3:3.8b-mini", etc.
-MODEL_NAME = "gpt-oss:20b"
+# limite de bytes agregados do repo para o contexto
+MAX_TOTAL_BYTES = 400_000
+# tamanho máximo por arquivo       
+MAX_FILE_BYTES = 40_000             
 
-# Limites e filtros de leitura
-MAX_TOTAL_BYTES = 400_000       # limite de bytes agregados do repo para o contexto
-MAX_FILE_BYTES = 40_000         # tamanho máximo por arquivo
 TEXT_EXTS = {
     ".md", ".txt", ".rst",
     ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".cs", ".go", ".rb", ".php",
     ".sh", ".yml", ".yaml", ".json", ".toml", ".ini", ".cfg", ".conf", ".xml",
     ".sql", ".gradle", ".groovy"
 }
+
 IGNORE_DIRS = {".git", ".svn", ".hg", "node_modules", "dist", "build", "target", ".venv", "venv", "__pycache__"}
 
-# Heurísticas para anchors
 KW_STOPWORDS = {
     # pt
     "de","da","do","das","dos","em","para","por","com","sem","ao","à","a","o","e","ou","um","uma",
@@ -59,6 +50,7 @@ KW_STOPWORDS = {
     "our","their","was","were","been","being"
 }
 
+# Alguns regexes para artifacts
 API_METHOD_RE = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(/[A-Za-z0-9_\-/{}/:]+)", re.IGNORECASE)
 SQL_TABLE_RE = re.compile(r"\bCREATE\s+TABLE\s+`?([A-Za-z0-9_]+)`?", re.IGNORECASE)
 EVENT_NAME_RE = re.compile(r"\b([A-Z][A-Za-z0-9]+Event)\b")
@@ -68,13 +60,11 @@ QUEUE_TOPIC_RE = re.compile(r"\b(topic|queue)s?[:=]\s*([A-Za-z0-9._\-]+)", re.IG
 README_CANDIDATES = ("README.md", "readme.md", "README", "Readme.md")
 PACKAGE_CANDIDATES = ("package.json", "requirements.txt", "pyproject.toml", "pom.xml", "build.gradle", "Cargo.toml")
 
-
-# === UTILIDADES =============================================================
-
 def is_text_file(path: str) -> bool:
     ext = pathlib.Path(path).suffix.lower()
     if ext in TEXT_EXTS:
         return True
+    
     # alguns arquivos sem extensão ainda são texto (README)
     name = os.path.basename(path).lower()
     if name in {n.lower() for n in README_CANDIDATES}:
@@ -84,10 +74,9 @@ def is_text_file(path: str) -> bool:
 
 def iter_repo_files(repo_dir: str) -> Iterable[str]:
     for root, dirs, files in os.walk(repo_dir):
-        # filtra dirs ignorados
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")]
         for f in files:
-            if f.startswith("."):  # ignora ocultos
+            if f.startswith("."): 
                 continue
             full = os.path.join(root, f)
             if is_text_file(full):
@@ -106,7 +95,6 @@ def safe_read(path: str, max_bytes: int = MAX_FILE_BYTES) -> str:
 
 
 def top_keywords(text: str, top_n: int = 30) -> List[str]:
-    # tokenização simples
     toks = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9_]{3,}", text)
     toks = [t.lower() for t in toks if t.lower() not in KW_STOPWORDS]
     freq = Counter(toks)
@@ -135,7 +123,7 @@ def extract_anchors(index: List[Tuple[str, str]]) -> Dict[str, List[Tuple[str, s
             others.append((p, c))
     ordered = prioritized + others
 
-    # coleta keywords por arquivo
+    # coleta palavras chave por arquivo
     for p, content in ordered:
         kws = top_keywords(content, top_n=15 if os.path.basename(p) in README_CANDIDATES else 8)
         for kw in kws:
@@ -143,7 +131,7 @@ def extract_anchors(index: List[Tuple[str, str]]) -> Dict[str, List[Tuple[str, s
             if len(kw_sources[kw]) < 3:
                 kw_sources[kw].append(p)
 
-        # artifacts
+        # artefatos
         for m in API_METHOD_RE.finditer(content):
             artifacts.append(("api_endpoint", f"{m.group(1).upper()} {m.group(2)}"))
         for m in SQL_TABLE_RE.finditer(content):
@@ -155,7 +143,7 @@ def extract_anchors(index: List[Tuple[str, str]]) -> Dict[str, List[Tuple[str, s
         for m in QUEUE_TOPIC_RE.finditer(content):
             artifacts.append((m.group(1).lower(), m.group(2)))
 
-    # escolhe top keywords e origens
+    # escolhe top palavras chave e origens
     top_kws = [kw for kw, _ in kw_scores.most_common(20)]
     kw_items = []
     for kw in top_kws[:12]:
@@ -179,9 +167,8 @@ def extract_anchors(index: List[Tuple[str, str]]) -> Dict[str, List[Tuple[str, s
 
 
 def build_context_snippets(index: List[Tuple[str, str]], budget: int = MAX_TOTAL_BYTES) -> str:
-    """
-    Produz um contexto com "catálogo" dos arquivos e pequenos trechos.
-    """
+    ## Produz um contexto com "catálogo" dos arquivos e pequenos trechos.
+
     parts = []
     total = 0
     for path, content in index:
@@ -262,6 +249,7 @@ e respeitando as seguintes regras:
 - Se não houver certeza, deixe campos vazios e use baixa confiança.
 - Preencha <evidence> referenciando caminhos/trechos usados.
 - Retorne APENAS o XML final (sem comentários, sem explicações).
+- Não use caracteres especiais em nenhum campo (!@#$%&*<>).
 {xml_str}
 """
 
@@ -282,9 +270,6 @@ def call_ollama_and_get_xml(model: str, prompt: str) -> str:
 def write_output(path: str, xml_text: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         f.write(xml_text)
-
-
-# === MAIN ===================================================================
 
 def main():
     parser = argparse.ArgumentParser(description="Preenche XML de domínio com suporte a XSD e Ollama.")
@@ -312,40 +297,33 @@ def main():
         print("Nenhum arquivo de texto elegível encontrado no repositório.", file=sys.stderr)
         sys.exit(2)
 
-    # 2) Extrair anchors (keywords, artifacts)
+    # 2) Extrair ancoras
     anchors = extract_anchors(index)
 
-    # 3) Carregar template XML e preencher anchors
+    # 3) Carregar template XML e preencher ancoras
     xml_tree = load_xml(TEMPLATE_XML_PATH)
     fill_domain_anchors(xml_tree, anchors)
 
-    # 4) (Opcional) Validar template já com anchors (garante estrutura básica)
-    ok, msg = validate_xml(xml_tree, XSD_PATH)
-    if not ok:
-        print("Template + anchors inválido segundo XSD:")
-        print(msg)
-        sys.exit(3)
-
-    # 5) Montar contexto do repositório (snippets) e prompt
+    # 4) Montar contexto do repositório e prompt
     repo_context = build_context_snippets(index, budget=MAX_TOTAL_BYTES)
-    # Inserir contexto como comentário no topo do XML (não afeta validação posterior,
-    # pois a IA devolverá o XML SEM comentários, conforme instrução)
+
+    # Inserir contexto como comentário no topo do XML (não afeta validação posterior, # pois a IA devolverá o XML SEM comentários, conforme instrução)
     xml_bytes = etree.tostring(xml_tree, encoding="utf-8", xml_declaration=True, pretty_print=True)
     xml_for_llm = xml_bytes.decode("utf-8", errors="replace")
 
     prompt = f"""
-Contexto do repositório (trechos):
-{repo_context}
+            Contexto do repositório (trechos):
+            {repo_context}
 
-INSTRUÇÃO:
-{build_llm_prompt_from_template(xml_for_llm)}
-""".strip()
+            INSTRUÇÃO:
+            {build_llm_prompt_from_template(xml_for_llm)}
+            """.strip()
 
-    # 6) Chamar Ollama
+    # 5) Chamar Ollama
     print(f"[INFO] Chamando Ollama modelo '{MODEL_NAME}'...", file=sys.stderr)
     llm_xml = call_ollama_and_get_xml(MODEL_NAME, prompt)
 
-    # 7) Parsear o retorno e validar com XSD
+    # 6) Parsear o retorno e validar com XSD
     try:
         final_tree = etree.fromstring(llm_xml.encode("utf-8", errors="replace"))
         final_doc = etree.ElementTree(final_tree)

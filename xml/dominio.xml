@@ -8,31 +8,29 @@ REGRAS PARA O LLM (one-shot):
 5) Para <domain>, gere primeiro os ANCHORS (<domainAnchors>), depois derive labels/other.
 -->
 
-<projectProfile version="1.1" schema="project-profile.xsd">
-  <metadata>
-    <repo>
-      <url></url>               <!-- ex.: https://github.com/org/repo -->
-      <default_branch></default_branch> <!-- ex.: main -->
-      <commit_sha></commit_sha> <!-- sha analisado -->
+<projectProfile version="1.0">
+  <!-- <metadata>
+    <repo>              
+      <default_branch></default_branch> 
     </repo>
     <generated>
-      <timestamp></timestamp>   <!-- ISO 8601, ex.: 2025-09-28T16:00:00-03:00 -->
-      <tool></tool>             <!-- seu pipeline/CLI -->
-      <model></model>           <!-- ex.: "flan-t5-base", "gemma-2-2b" -->
+      <timestamp></timestamp>  
+      <tool></tool>            
+      <model></model>          
     </generated>
-  </metadata>
+  </metadata> -->
 
   <!-- O que é o projeto? -->
   <projectType
-      kind="framework|library|cli|web_app|web_service|mobile_app|desktop_app|data_pipeline|infrastructure|package|other">
+      kind=""> <!-- valores validos: framework, web_service, web_app, mobile_app, desktop_app, data_pipeline, infrastructure, cli, library, package, other -->
     <label></label>             <!-- rótulo humano curto; ex.: "web service REST em Node.js" -->
     <confidence></confidence>   <!-- 0.0 a 1.0 -->
     <rationale></rationale>     <!-- por que chegou a esse tipo (máx. ~400 chars) -->
   </projectType>
 
-  <!-- DOMÍNIO: modelo “livre, mas seguro” com ANCHORS primeiro -->
+  <!-- DOMÍNIO -->
   <domain>
-    <!-- 1) ANCORAGEM (preencher primeiro): termos e artefatos observáveis no repositório -->
+    <!-- 1) ANCORAGEM: termos e artefatos observáveis no repositório -->
     <domainAnchors>
       <keywords>
         <!-- Forneça pelo menos 2 <kw>. Use source com arquivo:linha(s) ou seção. -->
@@ -43,24 +41,19 @@ REGRAS PARA O LLM (one-shot):
       </keywords>
       <artifacts>
         <!-- Liste artefatos detectáveis: tabelas, eventos, endpoints, filas, serviços, arquivos, etc. -->
-        <artifact kind="db_table|topic|queue|api_endpoint|event|service|file|config" name=""/>
-        <!-- <artifact kind="api_endpoint" name="POST /items"/> -->
-        <!-- <artifact kind="event" name="StockDepleted"/> -->
+        <artifact kind="" name=""/> <!-- valores valido kind: db_table|topic|queue|api_endpoint|event|service|file|config -->
       </artifacts>
     </domainAnchors>
 
-    <!-- 2) RÓTULOS CONTROLADOS (até 3) derivados dos anchors -->
-    <!-- Regras: use no máximo 3 labels; weight ∈ [0,1]; soma dos weights ≤ 1. -->
+    <!-- 2) RÓTULOS CONTROLADOS -->
     <labels>
-      <!-- exemplos de vocabulário: inventory_control, crm, finance, education, health,
-           ecommerce, social, devtool, operations, multimedia, iot, security, analytics -->
       <label name="" weight=""/>
-      <!-- <label name="inventory_control" weight="0.82"/> -->
     </labels>
 
     <!-- 3) CATEGORIA LIVRE OPCIONAL (usar somente se necessário, ver regras abaixo) -->
     <!-- Use <other> se (a) nenhum label tiver weight ≥ 0.6 OU (b) o domínio for muito específico. -->
     <!-- Exigir ≥2 <term> em <source_terms>; name com no máx. 5 palavras, evitando genéricos. -->
+    <!-- Se não for preenchido, não deve ser replicado na resposta-->
     <other>
       <name></name>
       <confidence></confidence>

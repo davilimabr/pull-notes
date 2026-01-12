@@ -8,12 +8,13 @@ Ferramenta local em Python para gerar descricoes de Pull Requests e Release Note
 
 ## Instalacao
 ```
-python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
 ## Uso rapido
 ```
-python gerador.py /caminho/para/repo --range v1.0..v1.1
+python -m gerador_cli /caminho/para/repo --range v1.0..v1.1 --config config.default.json
+# compat: python gerador.py /caminho/para/repo --range v1.0..v1.1 --config config.default.json
 ```
 
 Saidas padrao em `out/`:
@@ -27,3 +28,11 @@ Use `config.default.json` como base e passe com `--config`.
 
 ## Dominio (POC)
 A etapa de definicao de dominio reutiliza a POC em `preencher_dominio.py` via `domain_step.py`.
+
+## Estrutura
+O codigo foi organizado em camadas sob `src/gerador_cli/`:
+- `cli.py`: parsing da CLI.
+- `config.py`: carga/validacao de configuracoes.
+- `domain/`: modelos, servicos e geracao de perfil de dominio.
+- `adapters/`: git, filesystem, llm e POC de dominio.
+- `workflows/`: orquestracao principal (`sync.py`).

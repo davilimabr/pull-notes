@@ -1,0 +1,38 @@
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual envs
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE/editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project outputs
+out/
+.gerador/
+dominio.preenchido*.xml
+
+# Logs
+*.log

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gerador-cli"
+version = "0.1.0"
+description = "Gerador de descricoes de PR e release notes a partir de um repositorio Git."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "lxml",
+    "ollama",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+py-modules = ["gerador", "domain_step", "preencher_dominio"]
+
+[tool.setuptools.package-data]
+"gerador_cli" = ["xml/*.xml"]
+
+[project.scripts]
+gerador-cli = "gerador_cli.__main__:main"

@@ -26,8 +26,8 @@
   ],
   "diff": { "max_bytes": 12000, "max_lines": 200 },
   "domain": {
-    "template_path": "xml/dominio.xml",
-    "xsd_path": "xml/XSD_dominio.xml",
+    "template_path": "src/gerador_cli/xml/dominio.xml",
+    "xsd_path": "src/gerador_cli/xml/XSD_dominio.xml",
     "output_path": ".gerador/domain.xml",
     "model": "gpt-oss:20b",
     "max_total_bytes": 400000
@@ -35,5 +35,25 @@
   "templates": { "pr": "templates/pr.md", "release": "templates/release.md" },
   "output": { "dir": "out" },
   "language": "pt-BR",
-  "llm_model": "gpt-oss:20b"
+  "llm_model": "gpt-oss:20b",
+  "alerts": { "none_text": "None." },
+  "no_llm": {
+    "pr": {
+      "title": "Pull Request",
+      "summary": "Automated summary based on commits.",
+      "risks": "",
+      "testing": ""
+    },
+    "release": {
+      "executive_summary": "Automated release summary based on commits.",
+      "highlights": "",
+      "migration_notes": "",
+      "known_issues": "",
+      "internal_notes": ""
+    }
+  },
+  "release": {
+    "version_template": "{revision_range}",
+    "date_format": "%Y-%m-%d"
+  }
 }

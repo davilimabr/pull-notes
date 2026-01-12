@@ -1,3 +1,5 @@
+"""Domain profile generation workflow."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,17 +8,14 @@ from typing import Optional
 
 from lxml import etree
 
-import preencher_dominio as poc
+from ..adapters import domain_poc as poc
+from .errors import DomainBuildError
 
 
 @dataclass
 class DomainResult:
     output_path: Path
     xml_text: str
-
-
-class DomainBuildError(RuntimeError):
-    pass
 
 
 def build_domain_profile(
@@ -27,6 +26,7 @@ def build_domain_profile(
     output_path: Path,
     max_total_bytes: Optional[int] = None,
 ) -> DomainResult:
+    """Build domain profile using repository context and LLM."""
     repo_dir = repo_dir.resolve()
     if not repo_dir.is_dir():
         raise DomainBuildError(f"Repo dir not found: {repo_dir}")

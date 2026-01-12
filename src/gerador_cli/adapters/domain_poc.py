@@ -19,9 +19,10 @@ from lxml import etree
 from ollama import chat
 from ollama import ChatResponse
 
-TEMPLATE_XML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xml", "dominio.xml")
+XML_DIR = pathlib.Path(__file__).resolve().parent.parent / "xml"
+TEMPLATE_XML_PATH = str(XML_DIR / "dominio.xml")
 
-XSD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xml", "XSD_dominio.xml")
+XSD_PATH = str(XML_DIR / "XSD_dominio.xml")
 
 MODEL_NAME = "gpt-oss:20b-cloud"
 

@@ -74,6 +74,7 @@ def validate_config(config: Dict, *, generate: str, no_llm: bool) -> None:
             require(("domain", "xsd_path"))
             require(("domain", "model"))
             require(("domain", "max_total_bytes"))
+            require(("domain", "max_file_bytes"))
         if no_llm:
             require(("no_llm", "release", "executive_summary"))
             require(("no_llm", "release", "highlights"), allow_empty=True)

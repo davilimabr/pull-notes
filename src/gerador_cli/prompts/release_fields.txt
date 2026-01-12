@@ -1,0 +1,15 @@
+# Prompt: Gerar campos de release em JSON (executive_summary, highlights, migration_notes, known_issues, internal_notes). Nao enviar esta linha ao LLM.
+
+You are a careful assistant. Produce JSON with keys: executive_summary, highlights, migration_notes, known_issues, internal_notes.
+Use only facts present in commit summaries, messages, and the domain XML context.
+{{language_hint}}
+
+Release version: {{release_version}}
+
+Domain XML (truncated):
+{{domain_xml}}
+
+Commit summaries:
+{{commit_summaries}}
+
+Return only JSON.

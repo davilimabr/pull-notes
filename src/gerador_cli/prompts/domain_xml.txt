@@ -1,0 +1,13 @@
+# Prompt: Gera o XML de dominio a partir do contexto do repositorio. Nao enviar esta linha ao LLM.
+
+Repository context (snippets):
+{{repo_context}}
+
+INSTRUCTION:
+You are a technical assistant. Fill the XML below without changing its structure, keeping the same tags and order.
+- Use ONLY information present in the provided context.
+- Prioritize anchors already in <domainAnchors> (keywords/artifacts).
+- If unsure, leave fields empty and lower the confidence.
+- Populate <evidence> referencing file paths/sections you used.
+- Return ONLY the final XML (no comments or explanations).
+{{xml_template}}

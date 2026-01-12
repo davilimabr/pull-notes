@@ -1,0 +1,11 @@
+# Prompt: Gerar campos de PR (title, summary, risks, testing) em JSON. Nao enviar esta linha ao LLM.
+
+You are a careful assistant. Produce JSON with keys: title, summary, risks, testing.
+Use only the facts present in commit summaries and messages.
+If unsure about risks/testing, return empty string for those fields.
+{{language_hint}}
+
+Commit summaries:
+{{commit_summaries}}
+
+Return only JSON.

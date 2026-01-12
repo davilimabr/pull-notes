@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ..adapters.http import call_ollama
 from ..adapters.subprocess import run_git
+from ..prompts import load_prompt
 from .models import COMMIT_MARKER, GIT_FORMAT, Commit
 
 
@@ -144,18 +145,14 @@ def summarize_commit(commit: Commit, config: Dict, model: str) -> str:
     """Summarize commit using LLM."""
     diff_cfg = config["diff"]
     diff = trim_diff(commit.diff, diff_cfg["max_lines"], diff_cfg["max_bytes"])
-    prompt = (
-        "You are a careful assistant. Summarize the commit in 1-2 sentences.\n"
-        "Use only facts present in the message, files, and diff.\n"
-        "If unsure, answer with: Contexto insuficiente para resumir.\n"
-        f"{build_language_hint(config['language'])}\n\n"
-        "Commit message:\n"
-        f"{commit.subject}\n{commit.body}\n\n"
-        "Files:\n"
-        + "\n".join(f"- {f}" for f in commit.files[:30])
-        + "\n\nDiff (truncated):\n"
-        f"{diff}\n\n"
-        "Return only the summary text."
+    prompt = load_prompt(
+        "commit_summary",
+        {
+            "language_hint": build_language_hint(config["language"]),
+            "commit_message": f"{commit.subject}\n{commit.body}",
+            "files": "\n".join(f"- {f}" for f in commit.files[:30]),
+            "diff": diff,
+        },
     )
     return call_ollama(model, prompt)
 
@@ -171,14 +168,12 @@ def extract_json(text: str) -> Dict:
 
 def build_pr_fields(commits: List[Commit], config: Dict, model: str) -> Dict[str, str]:
     """Build PR fields using commit summaries."""
-    prompt = (
-        "You are a careful assistant. Produce JSON with keys: title, summary, risks, testing.\n"
-        "Use only the facts present in commit summaries and messages.\n"
-        "If unsure about risks/testing, return empty string for those fields.\n"
-        f"{build_language_hint(config['language'])}\n\n"
-        "Commit summaries:\n"
-        + "\n".join(f"- {c.summary or c.subject}" for c in commits)
-        + "\n\nReturn only JSON."
+    prompt = load_prompt(
+        "pr_fields",
+        {
+            "language_hint": build_language_hint(config["language"]),
+            "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
+        },
     )
     raw = call_ollama(model, prompt)
     return extract_json(raw)
@@ -188,17 +183,14 @@ def build_release_fields(
     commits: List[Commit], domain_xml: str, config: Dict, model: str, version: str
 ) -> Dict[str, str]:
     """Build release fields using commit summaries and domain context."""
-    prompt = (
-        "You are a careful assistant. Produce JSON with keys: executive_summary, highlights, "
-        "migration_notes, known_issues, internal_notes.\n"
-        "Use only facts present in commit summaries, messages, and the domain XML context.\n"
-        f"{build_language_hint(config['language'])}\n\n"
-        f"Release version: {version}\n\n"
-        "Domain XML (truncated):\n"
-        f"{domain_xml}\n\n"
-        "Commit summaries:\n"
-        + "\n".join(f"- {c.summary or c.subject}" for c in commits)
-        + "\n\nReturn only JSON."
+    prompt = load_prompt(
+        "release_fields",
+        {
+            "language_hint": build_language_hint(config["language"]),
+            "release_version": version,
+            "domain_xml": domain_xml,
+            "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
+        },
     )
     raw = call_ollama(model, prompt)
     return extract_json(raw)

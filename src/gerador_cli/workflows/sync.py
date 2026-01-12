@@ -102,6 +102,7 @@ def run_workflow(args) -> int:
                         model_name=domain_cfg["model"],
                         output_path=domain_out,
                         max_total_bytes=domain_cfg["max_total_bytes"],
+                        max_file_bytes=domain_cfg["max_file_bytes"],
                     )
                     domain_text = result.xml_text
                 except DomainBuildError as exc:

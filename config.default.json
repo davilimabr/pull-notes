@@ -30,7 +30,8 @@
     "xsd_path": "src/gerador_cli/xml/XSD_dominio.xml",
     "output_path": ".gerador/domain.xml",
     "model": "gpt-oss:20b",
-    "max_total_bytes": 400000
+    "max_total_bytes": 400000,
+    "max_file_bytes": 40000
   },
   "templates": { "pr": "templates/pr.md", "release": "templates/release.md" },
   "output": { "dir": "out" },

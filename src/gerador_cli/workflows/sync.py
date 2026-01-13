@@ -2,31 +2,38 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import asdict
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ..adapters.filesystem import ensure_dir, resolve_repo_path
 from ..config import load_config, validate_config
 from ..domain.domain_profile import build_domain_profile
 from ..domain.errors import DomainBuildError
-from ..domain.services import (
+from ..domain.services.aggregation import (
     build_convention_report,
+    classify_commit,
+    compute_importance,
+    summarize_commit,
+)
+from ..domain.services.composition import (
     build_pr_fields,
     build_release_fields,
     build_version_label,
-    classify_commit,
-    compute_importance,
-    get_commits,
     render_changes_by_type,
     render_template,
-    summarize_commit,
 )
+from ..domain.services.data_collection import get_commits
+from ..domain.services.export import export_commits, export_convention_report, export_text_document
 
 
-def _classify_and_score(commits, config):
+def _classify_commits(commits, config):
     for commit in commits:
         commit.change_type, commit.is_conventional = classify_commit(commit.subject, config["commit_types"])
+
+
+def _score_commits(commits, config):
+    for commit in commits:
         commit.importance_score, commit.importance_band = compute_importance(commit, config)
 
 
@@ -37,6 +44,36 @@ def _summarize_commits(commits, config, llm_model: str, no_llm: bool) -> None:
     else:
         for commit in commits:
             commit.summary = summarize_commit(commit, config, llm_model)
+
+
+def _warn_on_non_conventional(commits) -> None:
+    non_conventional = [c for c in commits if not c.is_conventional]
+    if not non_conventional:
+        return
+    print("WARNING: Commits fora do padrao definido foram encontrados:", file=sys.stderr)
+    for commit in non_conventional:
+        print(f"- {commit.short_sha}: {commit.subject}", file=sys.stderr)
+
+
+def _prepare_domain_text(repo_dir: Path, domain_cfg, no_llm: bool) -> str:
+    domain_out = resolve_repo_path(repo_dir, domain_cfg["output_path"])
+    if domain_out.exists():
+        return domain_out.read_text(encoding="utf-8")
+    if no_llm:
+        return ""
+    try:
+        result = build_domain_profile(
+            repo_dir=repo_dir,
+            template_path=resolve_repo_path(repo_dir, domain_cfg["template_path"]),
+            xsd_path=resolve_repo_path(repo_dir, domain_cfg["xsd_path"]),
+            model_name=domain_cfg["model"],
+            output_path=domain_out,
+            max_total_bytes=domain_cfg["max_total_bytes"],
+            max_file_bytes=domain_cfg["max_file_bytes"],
+        )
+        return result.xml_text
+    except DomainBuildError as exc:
+        raise SystemExit(f"Domain build failed: {exc}") from exc
 
 
 def run_workflow(args) -> int:
@@ -50,21 +87,34 @@ def run_workflow(args) -> int:
     if not args.no_llm:
         llm_model = args.model or config["llm_model"]
 
-    commits = get_commits(repo_dir, args.revision_range, args.since, args.until)
+    output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
+
+    domain_text = ""
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        commits_future = executor.submit(get_commits, repo_dir, args.revision_range, args.since, args.until)
+        domain_future = None
+        if args.generate in {"release", "both"} and not args.refresh_domain:
+            domain_future = executor.submit(_prepare_domain_text, repo_dir, config["domain"], args.no_llm)
+
+        commits = commits_future.result()
+        if domain_future:
+            domain_text = domain_future.result()
+
     if not commits:
         raise SystemExit("No commits found for the selected range.")
 
-    _classify_and_score(commits, config)
-    _summarize_commits(commits, config, llm_model, args.no_llm)
+    _classify_commits(commits, config)
+    _warn_on_non_conventional(commits)
 
-    output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
     ensure_dir(output_dir)
 
-    commit_data = [asdict(c) for c in commits]
-    (output_dir / "commits.json").write_text(json.dumps(commit_data, indent=2), encoding="utf-8")
-
     convention_report = build_convention_report(commits)
-    (output_dir / "conventions.md").write_text(convention_report, encoding="utf-8")
+    export_convention_report(convention_report, output_dir)
+
+    _score_commits(commits, config)
+    _summarize_commits(commits, config, llm_model, args.no_llm)
+
+    export_commits(commits, output_dir)
 
     changes_md = render_changes_by_type(commits, config)
 
@@ -84,31 +134,14 @@ def run_workflow(args) -> int:
             }
         )
         pr_text = render_template(pr_template, pr_fields)
-        (output_dir / "pr.md").write_text(pr_text, encoding="utf-8")
+        export_text_document(pr_text, output_dir, "pr.md")
 
     if args.generate in {"release", "both"}:
         domain_cfg = config["domain"]
-        domain_out = resolve_repo_path(repo_dir, domain_cfg["output_path"])
-        domain_text = ""
-        if not domain_out.exists() or args.refresh_domain:
-            if args.no_llm:
-                domain_text = ""
-            else:
-                try:
-                    result = build_domain_profile(
-                        repo_dir=repo_dir,
-                        template_path=resolve_repo_path(repo_dir, domain_cfg["template_path"]),
-                        xsd_path=resolve_repo_path(repo_dir, domain_cfg["xsd_path"]),
-                        model_name=domain_cfg["model"],
-                        output_path=domain_out,
-                        max_total_bytes=domain_cfg["max_total_bytes"],
-                        max_file_bytes=domain_cfg["max_file_bytes"],
-                    )
-                    domain_text = result.xml_text
-                except DomainBuildError as exc:
-                    raise SystemExit(f"Domain build failed: {exc}")
-        else:
-            domain_text = domain_out.read_text(encoding="utf-8")
+        if not domain_text and not args.refresh_domain:
+            domain_out = resolve_repo_path(repo_dir, domain_cfg["output_path"])
+            if domain_out.exists():
+                domain_text = domain_out.read_text(encoding="utf-8")
 
         release_template_path = resolve_repo_path(repo_dir, config["templates"]["release"])
         release_template = release_template_path.read_text(encoding="utf-8")
@@ -125,6 +158,6 @@ def run_workflow(args) -> int:
             }
         )
         release_text = render_template(release_template, release_fields)
-        (output_dir / "release.md").write_text(release_text, encoding="utf-8")
+        export_text_document(release_text, output_dir, "release.md")
 
     return 0

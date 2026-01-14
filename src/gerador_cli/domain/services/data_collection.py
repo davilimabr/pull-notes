@@ -9,6 +9,25 @@ from ...adapters.subprocess import run_git
 from ..models import COMMIT_MARKER, GIT_FORMAT, Commit
 
 
+def _prefix_origin_range(revision_range: str) -> str:
+    """Prefix refs in a revision range with origin/ for fallback."""
+
+    def add_origin(ref: str) -> str:
+        if not ref or ref == "HEAD" or ref.startswith("origin/"):
+            return ref
+        return f"origin/{ref}"
+
+    if "..." in revision_range:
+        sep = "..."
+    elif ".." in revision_range:
+        sep = ".."
+    else:
+        return add_origin(revision_range)
+
+    left, right = revision_range.split(sep, 1)
+    return f"{add_origin(left)}{sep}{add_origin(right)}"
+
+
 def parse_git_log(log_text: str) -> List[Commit]:
     """Parse git log output into Commit objects."""
     commits: List[Commit] = []
@@ -62,14 +81,28 @@ def parse_git_log(log_text: str) -> List[Commit]:
 
 def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[str], until: Optional[str]) -> List[Commit]:
     """Fetch commits within a git range and attach body/diff."""
-    args = ["log", "--date=iso-strict", f"--pretty=format:{GIT_FORMAT}", "--numstat"]
+    args_base = ["log", "--date=iso-strict", f"--pretty=format:{GIT_FORMAT}", "--numstat"]
     if since:
-        args.append(f"--since={since}")
+        args_base.append(f"--since={since}")
     if until:
-        args.append(f"--until={until}")
-    if revision_range:
-        args.append(revision_range)
-    log_text = run_git(repo_dir, args)
+        args_base.append(f"--until={until}")
+
+    range_to_use = revision_range
+    args = args_base + ([range_to_use] if range_to_use else [])
+    try:
+        log_text = run_git(repo_dir, args)
+    except RuntimeError as exc:
+        if not revision_range:
+            raise
+        origin_range = _prefix_origin_range(revision_range)
+        if origin_range == revision_range:
+            raise
+        retry_args = args_base + [origin_range]
+        try:
+            log_text = run_git(repo_dir, retry_args)
+        except RuntimeError as retry_exc:
+            raise RuntimeError(f"{exc} ; fallback with '{origin_range}' failed: {retry_exc}") from retry_exc
+
     commits = parse_git_log(log_text)
     for commit in commits:
         commit.body = run_git(repo_dir, ["show", "-s", "--format=%B", commit.sha]).strip()

@@ -6,7 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ..adapters.filesystem import ensure_dir, resolve_repo_path
+from ..adapters.filesystem import ensure_dir, resolve_cli_or_absolute, resolve_cli_path, resolve_repo_path
 from ..config import load_config, validate_config
 from ..domain.domain_profile import build_domain_profile
 from ..domain.errors import DomainBuildError
@@ -64,8 +64,8 @@ def _prepare_domain_text(repo_dir: Path, domain_cfg, no_llm: bool) -> str:
     try:
         result = build_domain_profile(
             repo_dir=repo_dir,
-            template_path=resolve_repo_path(repo_dir, domain_cfg["template_path"]),
-            xsd_path=resolve_repo_path(repo_dir, domain_cfg["xsd_path"]),
+            template_path=resolve_cli_path(domain_cfg["template_path"]),
+            xsd_path=resolve_cli_path(domain_cfg["xsd_path"]),
             model_name=domain_cfg["model"],
             output_path=domain_out,
             max_total_bytes=domain_cfg["max_total_bytes"],
@@ -121,7 +121,7 @@ def run_workflow(args) -> int:
     if args.generate in {"pr", "both"}:
         alerts = [c.subject for c in commits if not c.is_conventional]
         alerts_md = "\n".join(f"- {a}" for a in alerts) if alerts else config["alerts"]["none_text"]
-        pr_template_path = resolve_repo_path(repo_dir, config["templates"]["pr"])
+        pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
         pr_template = pr_template_path.read_text(encoding="utf-8")
         if args.no_llm:
             pr_fields = dict(config["no_llm"]["pr"])
@@ -143,7 +143,7 @@ def run_workflow(args) -> int:
             if domain_out.exists():
                 domain_text = domain_out.read_text(encoding="utf-8")
 
-        release_template_path = resolve_repo_path(repo_dir, config["templates"]["release"])
+        release_template_path = resolve_cli_or_absolute(config["templates"]["release"])
         release_template = release_template_path.read_text(encoding="utf-8")
         version_label = build_version_label(args.version, args.revision_range, config["release"])
         domain_trimmed = domain_text[:6000]

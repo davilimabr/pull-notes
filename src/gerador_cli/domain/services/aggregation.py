@@ -27,9 +27,11 @@ def compute_importance(commit: Commit, config: Dict) -> Tuple[float, str]:
     score = (commit.additions + commit.deletions) * imp["weight_lines"]
     score += len(commit.files) * imp["weight_files"]
     lowered = (commit.subject + "\n" + commit.body).lower()
+    
     for keyword, bonus in imp["keyword_bonus"].items():
         if keyword in lowered:
             score += float(bonus)
+            
     bands = sorted(config["importance_bands"], key=lambda x: x["min"])
     band = bands[0]["name"]
     for item in bands:

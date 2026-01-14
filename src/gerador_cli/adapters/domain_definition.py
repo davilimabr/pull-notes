@@ -391,10 +391,6 @@ def generate_domain_xml(
     xml_tree = load_xml(template_path)
     fill_domain_anchors(xml_tree, anchors)
 
-    ok, msg = validate_xml(xml_tree, xsd_path)
-    if not ok:
-        raise DomainBuildError(f"Template+anchors invalid for XSD: {msg}")
-
     repo_context = build_context_snippets(index, budget=max_total_bytes)
     xml_bytes = etree.tostring(xml_tree, encoding="utf-8", xml_declaration=True, pretty_print=True)
     xml_for_llm = xml_bytes.decode("utf-8", errors="replace")

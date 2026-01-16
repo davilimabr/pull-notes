@@ -17,7 +17,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--generate", choices=["pr", "release", "both"], default="both")
     parser.add_argument("--version", default="", help="Release version label")
     parser.add_argument("--output-dir", default="", help="Override output directory")
-    parser.add_argument("--no-llm", action="store_true", help="Skip LLM calls and use configured text")
     parser.add_argument("--refresh-domain", action="store_true", help="Rebuild domain profile")
     parser.add_argument("--model", default="", help="Override LLM model for summaries")
     return parser

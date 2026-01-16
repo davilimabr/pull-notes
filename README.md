@@ -5,6 +5,7 @@ Ferramenta local em Python para gerar descricoes de Pull Requests e Release Note
 ## Requisitos
 - Python 3.10+
 - Ollama rodando localmente
+- As chamadas ao LLM sao obrigatorias; se falharem, a execucao encerra com erro
 
 ## Instalacao
 ```

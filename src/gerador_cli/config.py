@@ -30,7 +30,7 @@ def _is_empty(value: object) -> bool:
     return False
 
 
-def validate_config(config: Dict, *, generate: str, no_llm: bool) -> None:
+def validate_config(config: Dict, *, generate: str) -> None:
     """Validate required configuration keys."""
     missing: List[str] = []
     empty: List[str] = []
@@ -58,35 +58,22 @@ def validate_config(config: Dict, *, generate: str, no_llm: bool) -> None:
     if generate in {"pr", "both"}:
         require(("templates", "pr"))
         require(("alerts", "none_text"))
-        if no_llm:
-            require(("no_llm", "pr", "title"))
-            require(("no_llm", "pr", "summary"))
-            require(("no_llm", "pr", "risks"), allow_empty=True)
-            require(("no_llm", "pr", "testing"), allow_empty=True)
 
     if generate in {"release", "both"}:
         require(("templates", "release"))
         require(("domain", "output_path"))
         require(("release", "version_template"))
         require(("release", "date_format"))
-        if not no_llm:
-            require(("domain", "template_path"))
-            require(("domain", "xsd_path"))
-            require(("domain", "model"))
-            require(("domain", "max_total_bytes"))
-            require(("domain", "max_file_bytes"))
-        if no_llm:
-            require(("no_llm", "release", "executive_summary"))
-            require(("no_llm", "release", "highlights"), allow_empty=True)
-            require(("no_llm", "release", "migration_notes"), allow_empty=True)
-            require(("no_llm", "release", "known_issues"), allow_empty=True)
-            require(("no_llm", "release", "internal_notes"), allow_empty=True)
+        require(("domain", "template_path"))
+        require(("domain", "xsd_path"))
+        require(("domain", "model"))
+        require(("domain", "max_total_bytes"))
+        require(("domain", "max_file_bytes"))
 
-    if not no_llm:
-        require(("diff", "max_bytes"))
-        require(("diff", "max_lines"))
-        require(("language",))
-        require(("llm_model",))
+    require(("diff", "max_bytes"))
+    require(("diff", "max_lines"))
+    require(("language",))
+    require(("llm_model",))
 
     if keyword_bonus is not None and not isinstance(keyword_bonus, dict):
         empty.append("importance.keyword_bonus")

@@ -94,12 +94,10 @@ def _warn_on_non_conventional(commits) -> None:
     print("⚠️ WARNING: Commits fora do padrao definido foram encontrados, busque seguir a convenção definida ou altere no arquivo de configuração, para melhor funcionamento da ferramenta.", file=sys.stderr)
 
 
-def _prepare_domain_text(repo_dir: Path, domain_cfg, no_llm: bool) -> str:
+def _prepare_domain_text(repo_dir: Path, domain_cfg, llm_timeout_seconds: float | int | None) -> str:
     domain_out = resolve_repo_path(repo_dir, domain_cfg["output_path"])
     if domain_out.exists():
         return domain_out.read_text(encoding="utf-8")
-    if no_llm:
-        return ""
     try:
         result = build_domain_profile(
             repo_dir=repo_dir,
@@ -109,17 +107,13 @@ def _prepare_domain_text(repo_dir: Path, domain_cfg, no_llm: bool) -> str:
             output_path=domain_out,
             max_total_bytes=domain_cfg["max_total_bytes"],
             max_file_bytes=domain_cfg["max_file_bytes"],
-            llm_timeout_seconds=config.get("llm_timeout_seconds"),
+            llm_timeout_seconds=llm_timeout_seconds,
         )
         return result.xml_text
     except DomainBuildError as exc:
         raise SystemExit(f"Domain build failed: {exc}") from exc
     except Exception as exc:  # pragma: no cover - network/LLM failures
-        print(
-            f"WARNING: Falha ao gerar perfil de dominio com LLM: {exc}. Continuando sem contexto de dominio.",
-            file=sys.stderr,
-        )
-        return ""
+        raise SystemExit(f"Unexpected failure while generating domain profile with LLM: {exc}") from exc
 
 
 def run_workflow(args) -> int:
@@ -128,10 +122,8 @@ def run_workflow(args) -> int:
         raise SystemExit(f"Repo dir not found: {repo_dir}")
 
     config = load_config(args.config)
-    validate_config(config, generate=args.generate, no_llm=args.no_llm)
-    llm_model = ""
-    if not args.no_llm:
-        llm_model = args.model or config["llm_model"]
+    validate_config(config, generate=args.generate)
+    llm_model = args.model or config["llm_model"]
 
     output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
 
@@ -140,7 +132,9 @@ def run_workflow(args) -> int:
         commits_future = executor.submit(get_commits, repo_dir, args.revision_range, args.since, args.until)
         domain_future = None
         if args.generate in {"release", "both"} and not args.refresh_domain:
-            domain_future = executor.submit(_prepare_domain_text, repo_dir, config["domain"], args.no_llm)
+            domain_future = executor.submit(
+                _prepare_domain_text, repo_dir, config["domain"], config.get("llm_timeout_seconds")
+            )
 
         commits = commits_future.result()
         if domain_future:
@@ -170,18 +164,10 @@ def run_workflow(args) -> int:
         alerts_md = "\n".join(f"- {a}" for a in alerts) if alerts else config["alerts"]["none_text"]
         pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
         pr_template = pr_template_path.read_text(encoding="utf-8")
-        if not llm_ready or args.no_llm:
-            pr_fields = dict(config["no_llm"]["pr"])
-        else:
-            try:
-                pr_fields = build_pr_fields(commits, config, llm_model)
-            except Exception as exc:
-                llm_ready = False
-                print(
-                    f"WARNING: Falha ao gerar campos de PR com LLM: {exc}. Usando configuracao no_llm.",
-                    file=sys.stderr,
-                )
-                pr_fields = dict(config["no_llm"]["pr"])
+        try:
+            pr_fields = build_pr_fields(commits, config, llm_model)
+        except Exception as exc:
+            raise SystemExit(f"Falha ao gerar campos de PR com LLM: {exc}") from exc
         pr_fields.update(
             {
                 "changes_by_type": changes_md,
@@ -202,18 +188,10 @@ def run_workflow(args) -> int:
         release_template = release_template_path.read_text(encoding="utf-8")
         version_label = build_version_label(args.version, args.revision_range, config["release"])
         domain_trimmed = domain_text[:6000]
-        if not llm_ready or args.no_llm:
-            release_fields = dict(config["no_llm"]["release"])
-        else:
-            try:
-                release_fields = build_release_fields(commits, domain_trimmed, config, llm_model, version_label)
-            except Exception as exc:
-                llm_ready = False
-                print(
-                    f"WARNING: Falha ao gerar campos de release com LLM: {exc}. Usando configuracao no_llm.",
-                    file=sys.stderr,
-                )
-                release_fields = dict(config["no_llm"]["release"])
+        try:
+            release_fields = build_release_fields(commits, domain_trimmed, config, llm_model, version_label)
+        except Exception as exc:
+            raise SystemExit(f"Falha ao gerar campos de release com LLM: {exc}") from exc
         release_fields.update(
             {
                 "version": version_label,

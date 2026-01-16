@@ -431,7 +431,7 @@ def run_cli(argv: List[str] | None = None) -> int:
         raise SystemExit(f"Repo dir not found: {repo_dir}")
 
     config = load_config(args.config)
-    validate_config(config, generate="release", no_llm=False)
+    validate_config(config, generate="release")
     domain_cfg = config["domain"]
 
     template_path = resolve_repo_path(repo_dir, domain_cfg["template_path"])

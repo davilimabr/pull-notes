@@ -7,7 +7,7 @@ from typing import Any, Dict
 try:
     import httpx
     from ollama import Client as OllamaClient
-except Exception:  # pragma: no cover - optional import for --no-llm
+except Exception:  # pragma: no cover - optional import handling
     httpx = None
     OllamaClient = None
 

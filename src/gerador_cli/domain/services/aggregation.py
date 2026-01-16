@@ -11,14 +11,52 @@ from ..models import Commit
 from .data_collection import trim_diff
 
 _GROUP_LINE_RE = re.compile(r"^(?:[-*]\s*)?(?P<sha>[0-9a-fA-F]{7,})\s*[:\-]\s*(?P<summary>.+)$")
+_JS_REGEX_RE = re.compile(r"^/(.+)/([a-zA-Z]*)$")
+
+
+def _compile_config_pattern(pattern_spec) -> re.Pattern:
+    """Allow JS-style /.../flags patterns or plain regex strings."""
+    if isinstance(pattern_spec, re.Pattern):
+        return pattern_spec
+    if not isinstance(pattern_spec, str):
+        raise ValueError(f"Commit pattern must be string or regex, got {type(pattern_spec)!r}")
+
+    flags = re.IGNORECASE
+    body = pattern_spec.strip()
+    js_match = _JS_REGEX_RE.match(body)
+    if js_match:
+        body = js_match.group(1)
+        flag_text = js_match.group(2).lower()
+        flags = 0
+        for char in flag_text:
+            if char == "i":
+                flags |= re.IGNORECASE
+            elif char == "m":
+                flags |= re.MULTILINE
+            elif char == "s":
+                flags |= re.DOTALL
+        if not flags:
+            flags = re.IGNORECASE
+
+    # Config JSON often swallows backslashes like \b; restore common escapes.
+    body = body.replace("\x08", r"\b")
+
+    try:
+        return re.compile(body, flags)
+    except re.error as exc:
+        raise ValueError(f"Invalid commit type pattern '{pattern_spec}': {exc}") from exc
 
 
 def classify_commit(subject: str, commit_types: Dict[str, Dict]) -> Tuple[str, bool]:
     """Classify commit message using configured patterns."""
     clean_subject = subject.strip()
     for type_name, data in commit_types.items():
-        for pattern in data["patterns"]:
-            if re.search(pattern, clean_subject, flags=re.IGNORECASE):
+        compiled = data.get("_compiled_patterns")
+        if compiled is None:
+            compiled = [_compile_config_pattern(pattern) for pattern in data["patterns"]]
+            data["_compiled_patterns"] = compiled
+        for regex in compiled:
+            if regex.search(clean_subject):
                 return type_name, True
     return "other", False
 

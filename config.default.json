@@ -1,16 +1,16 @@
 {
   "commit_types": {
-    "feat": { "label": "Features", "patterns": ["/\bfeat\b/gi", "/\bfeature\b/gi"] },
-    "fix": { "label": "Fix", "patterns": ["/\bfix\b/gi", "/\bbugfix\b/gi"] },
-    "docs": { "label": "Docs", "patterns": ["/\bdocs\b/gi"] },
-    "refactor": { "label": "Refactor", "patterns": ["/\brefactor\b/gi"] },
-    "perf": { "label": "Performance", "patterns": ["/\bperf\b/gi"] },
-    "test": { "label": "Test", "patterns": ["/\btest\b/gi", "/\btests\b/gi"] },
-    "build": { "label": "Build", "patterns": ["/\bbuild\b/gi"] },
-    "ci": { "label": "CI", "patterns": ["/\bci\b/gi"] },
-    "style": { "label": "Style", "patterns": ["/\bstyle\b/gi"] },
-    "chore": { "label": "chore", "patterns": ["/\bchore\b/gi"] },
-    "revert": { "label": "revert", "patterns": ["/\brevert\b/gi"] }
+    "feat": { "label": "Features", "patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"] },
+    "fix": { "label": "Fix", "patterns": ["\\bfix\\b", "\\bbugfix\\b"] },
+    "docs": { "label": "Docs", "patterns": ["\\bdocs\\b"] },
+    "refactor": { "label": "Refactor", "patterns": ["\\brefactor\\b"] },
+    "perf": { "label": "Performance", "patterns": ["\\bperf\\b"] },
+    "test": { "label": "Test", "patterns": ["\\btest\\b", "\\btests\\b"] },
+    "build": { "label": "Build", "patterns": ["\\bbuild\\b"] },
+    "ci": { "label": "CI", "patterns": ["\\bci\\b"] },
+    "style": { "label": "Style", "patterns": ["\\bstyle\\b"] },
+    "chore": { "label": "chore", "patterns": ["\\bchore\\b"] },
+    "revert": { "label": "revert", "patterns": ["\\brevert\\b"] }
   },
   "other_label": "Other",
   "importance": {
@@ -37,23 +37,8 @@
   "output": { "dir": "out" },
   "language": "pt-BR",
   "llm_model": "gpt-oss:20b",
-  "llm_timeout_seconds": 30,
+  "llm_timeout_seconds": 200,
   "alerts": { "none_text": "None." },
-  "no_llm": {
-    "pr": {
-      "title": "Pull Request",
-      "summary": "Automated summary based on commits.",
-      "risks": "",
-      "testing": ""
-    },
-    "release": {
-      "executive_summary": "Automated release summary based on commits.",
-      "highlights": "",
-      "migration_notes": "",
-      "known_issues": "",
-      "internal_notes": ""
-    }
-  },
   "release": {
     "version_template": "{revision_range}",
     "date_format": "%Y-%m-%d"

@@ -57,7 +57,7 @@ def summarize_commit(commit: Commit, config: Dict, model: str) -> str:
             "diff": diff,
         },
     )
-    return call_ollama(model, prompt)
+    return call_ollama(model, prompt, config.get("llm_timeout_seconds"))
 
 
 def build_convention_report(commits: List[Commit]) -> str:

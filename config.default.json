@@ -1,16 +1,16 @@
 {
   "commit_types": {
-    "feat": { "label": "Features", "patterns": ["^feat(\\(|:|$)", "^feature(\\(|:|$)"] },
-    "fix": { "label": "Fixes", "patterns": ["^fix(\\(|:|$)", "^bugfix(\\(|:|$)"] },
-    "docs": { "label": "Docs", "patterns": ["^docs(\\(|:|$)"] },
-    "refactor": { "label": "Refactors", "patterns": ["^refactor(\\(|:|$)"] },
-    "perf": { "label": "Performance", "patterns": ["^perf(\\(|:|$)"] },
-    "test": { "label": "Tests", "patterns": ["^test(\\(|:|$)"] },
-    "build": { "label": "Build", "patterns": ["^build(\\(|:|$)"] },
-    "ci": { "label": "CI", "patterns": ["^ci(\\(|:|$)"] },
-    "style": { "label": "Style", "patterns": ["^style(\\(|:|$)"] },
-    "chore": { "label": "Chores", "patterns": ["^chore(\\(|:|$)"] },
-    "revert": { "label": "Reverts", "patterns": ["^revert(\\(|:|$)"] }
+    "feat": { "label": "Features", "patterns": ["/\bfeat\b/gi", "/\bfeature\b/gi"] },
+    "fix": { "label": "Fix", "patterns": ["/\bfix\b/gi", "/\bbugfix\b/gi"] },
+    "docs": { "label": "Docs", "patterns": ["/\bdocs\b/gi"] },
+    "refactor": { "label": "Refactor", "patterns": ["/\brefactor\b/gi"] },
+    "perf": { "label": "Performance", "patterns": ["/\bperf\b/gi"] },
+    "test": { "label": "Test", "patterns": ["/\btest\b/gi", "/\btests\b/gi"] },
+    "build": { "label": "Build", "patterns": ["/\bbuild\b/gi"] },
+    "ci": { "label": "CI", "patterns": ["/\bci\b/gi"] },
+    "style": { "label": "Style", "patterns": ["/\bstyle\b/gi"] },
+    "chore": { "label": "chore", "patterns": ["/\bchore\b/gi"] },
+    "revert": { "label": "revert", "patterns": ["/\brevert\b/gi"] }
   },
   "other_label": "Other",
   "importance": {
@@ -37,6 +37,7 @@
   "output": { "dir": "out" },
   "language": "pt-BR",
   "llm_model": "gpt-oss:20b",
+  "llm_timeout_seconds": 30,
   "alerts": { "none_text": "None." },
   "no_llm": {
     "pr": {

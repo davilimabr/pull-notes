@@ -48,7 +48,7 @@ def build_pr_fields(commits: List[Commit], config: Dict, model: str) -> Dict[str
             "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
         },
     )
-    raw = call_ollama(model, prompt)
+    raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
     return extract_json(raw)
 
 
@@ -65,7 +65,7 @@ def build_release_fields(
             "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
         },
     )
-    raw = call_ollama(model, prompt)
+    raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
     return extract_json(raw)
 
 

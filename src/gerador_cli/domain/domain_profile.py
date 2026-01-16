@@ -24,6 +24,7 @@ def build_domain_profile(
     output_path: Path,
     max_total_bytes: Optional[int] = None,
     max_file_bytes: Optional[int] = None,
+    llm_timeout_seconds: Optional[float] = None,
 ) -> DomainResult:
     """Build domain profile using repository context and LLM."""
     repo_dir = repo_dir.resolve()
@@ -46,6 +47,7 @@ def build_domain_profile(
             model_name=model_name,
             max_total_bytes=budget_total,
             max_file_bytes=budget_file,
+            llm_timeout_seconds=llm_timeout_seconds,
             debug_output_path=output_path,
         )
     except DomainBuildError:

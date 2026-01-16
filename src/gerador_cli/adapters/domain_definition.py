@@ -356,8 +356,8 @@ def build_prompt(repo_context: str, xml_for_llm: str) -> str:
     )
 
 
-def call_llm_for_xml(model: str, prompt: str) -> str:
-    content = call_ollama(model, prompt)
+def call_llm_for_xml(model: str, prompt: str, timeout_seconds: float | int | None = None) -> str:
+    content = call_ollama(model, prompt, timeout_seconds)
     if not content:
         raise DomainBuildError("Empty response from LLM.")
     return content.strip()
@@ -376,6 +376,7 @@ def generate_domain_xml(
     *,
     max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    llm_timeout_seconds: float | int | None = None,
     debug_output_path: Path | None = None,
 ) -> str:
     """Build and validate the domain XML using repository context and an LLM."""
@@ -396,7 +397,7 @@ def generate_domain_xml(
     xml_for_llm = xml_bytes.decode("utf-8", errors="replace")
     prompt = build_prompt(repo_context, xml_for_llm)
 
-    raw_output = call_llm_for_xml(model_name, prompt)
+    raw_output = call_llm_for_xml(model_name, prompt, llm_timeout_seconds)
     try:
         final_tree = etree.fromstring(raw_output.encode("utf-8", errors="replace"))
         final_doc = etree.ElementTree(final_tree)
@@ -439,6 +440,7 @@ def run_cli(argv: List[str] | None = None) -> int:
     model_name = args.model or domain_cfg["model"]
     max_total_bytes = args.max_total_bytes or domain_cfg["max_total_bytes"]
     max_file_bytes = args.max_file_bytes or domain_cfg["max_file_bytes"]
+    llm_timeout_seconds = config.get("llm_timeout_seconds")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -450,6 +452,7 @@ def run_cli(argv: List[str] | None = None) -> int:
             model_name=model_name,
             max_total_bytes=max_total_bytes,
             max_file_bytes=max_file_bytes,
+            llm_timeout_seconds=llm_timeout_seconds,
             debug_output_path=output_path,
         )
     except DomainBuildError as exc:

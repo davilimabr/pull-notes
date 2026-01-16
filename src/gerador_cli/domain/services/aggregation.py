@@ -10,6 +10,8 @@ from ...prompts import load_prompt
 from ..models import Commit
 from .data_collection import trim_diff
 
+_GROUP_LINE_RE = re.compile(r"^(?:[-*]\s*)?(?P<sha>[0-9a-fA-F]{7,})\s*[:\-]\s*(?P<summary>.+)$")
+
 
 def classify_commit(subject: str, commit_types: Dict[str, Dict]) -> Tuple[str, bool]:
     """Classify commit message using configured patterns."""
@@ -40,6 +42,24 @@ def compute_importance(commit: Commit, config: Dict) -> Tuple[float, str]:
     return score, band
 
 
+def group_commits_by_type(commits: List[Commit], config: Dict) -> List[Tuple[str, List[Commit]]]:
+    """Group commits by configured type and sort each group by importance."""
+    grouped: List[Tuple[str, List[Commit]]] = []
+    commit_types = config["commit_types"]
+    for type_name in commit_types:
+        typed_commits = sorted(
+            (c for c in commits if c.change_type == type_name), key=lambda c: c.importance_score, reverse=True
+        )
+        grouped.append((type_name, typed_commits))
+
+    other_commits = sorted(
+        (c for c in commits if c.change_type not in commit_types), key=lambda c: c.importance_score, reverse=True
+    )
+    if other_commits:
+        grouped.append(("other", other_commits))
+    return grouped
+
+
 def build_language_hint(language: str) -> str:
     return f"Write the response in {language}."
 
@@ -58,6 +78,63 @@ def summarize_commit(commit: Commit, config: Dict, model: str) -> str:
         },
     )
     return call_ollama(model, prompt, config.get("llm_timeout_seconds"))
+
+
+def _build_commit_blocks(commits: List[Commit], diff_cfg: Dict) -> str:
+    blocks: List[str] = []
+    for commit in commits:
+        files = "\n".join(f"- {f}" for f in commit.files[:30]) or "- (no files listed)"
+        trimmed_diff = trim_diff(commit.diff, diff_cfg["max_lines"], diff_cfg["max_bytes"])
+        diff_text = trimmed_diff if trimmed_diff.strip() else "(diff vazio ou indisponivel)"
+        body_text = commit.body.strip() or "(sem corpo)"
+        blocks.append(
+            "\n".join(
+                [
+                    f"Commit: {commit.short_sha}",
+                    f"Subject: {commit.subject}",
+                    f"Body: {body_text}",
+                    "Files:",
+                    files,
+                    "Diff (truncated):",
+                    diff_text,
+                ]
+            )
+        )
+    return "\n\n".join(blocks)
+
+
+def _parse_group_summary_output(raw: str, expected_shas: List[str]) -> Dict[str, str]:
+    summaries: Dict[str, str] = {}
+    expected_set = {sha.lower() for sha in expected_shas}
+    for line in raw.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        match = _GROUP_LINE_RE.match(cleaned)
+        if not match:
+            continue
+        sha = match.group("sha").lower()[:7]
+        summary = match.group("summary").strip()
+        if sha in expected_set and sha not in summaries and summary:
+            summaries[sha] = summary
+    return summaries
+
+
+def summarize_commit_group(commit_type: str, commits: List[Commit], config: Dict, model: str) -> Dict[str, str]:
+    """Summarize a list of commits of the same type in a single LLM call."""
+    commit_types = config.get("commit_types", {})
+    label = commit_types.get(commit_type, {}).get("label") or config.get("other_label", commit_type)
+    diff_cfg = config["diff"]
+    prompt = load_prompt(
+        "commit_group_summary",
+        {
+            "language_hint": build_language_hint(config["language"]),
+            "change_type_label": label,
+            "commit_blocks": _build_commit_blocks(commits, diff_cfg),
+        },
+    )
+    raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
+    return _parse_group_summary_output(raw, [c.short_sha for c in commits])
 
 
 def build_convention_report(commits: List[Commit]) -> str:

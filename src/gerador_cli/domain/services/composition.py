@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from ...adapters.http import call_ollama
 from ...prompts import load_prompt
 from ..models import Commit
-from .aggregation import build_language_hint
+from .aggregation import build_language_hint, group_commits_by_type
 
 
 def build_version_label(version_override: str, revision_range: str | None, release_cfg: Dict) -> str:
@@ -78,25 +78,30 @@ def render_template(template_text: str, values: Dict[str, str]) -> str:
     return out.strip() + "\n"
 
 
-def render_changes_by_type(commits: List[Commit], config: Dict) -> str:
+def render_changes_by_type(
+    commits_or_groups: List[Commit] | List[Tuple[str, List[Commit]]], config: Dict
+) -> str:
     """Render changes grouped by commit type."""
-    by_type: Dict[str, List[Commit]] = {}
-    for commit in commits:
-        by_type.setdefault(commit.change_type, []).append(commit)
+    if commits_or_groups and isinstance(commits_or_groups[0], tuple):
+        grouped_commits = commits_or_groups  # type: ignore[assignment]
+    else:
+        grouped_commits = group_commits_by_type(commits_or_groups, config)  # type: ignore[arg-type]
+
+    by_type: Dict[str, List[Commit]] = {type_name: group for type_name, group in grouped_commits}
     lines = []
     for type_name, data in config["commit_types"].items():
         group = by_type.get(type_name, [])
         if not group:
             continue
         lines.append(f"### {data['label']}")
-        for commit in sorted(group, key=lambda c: c.importance_score, reverse=True):
+        for commit in group:
             summary = commit.summary or commit.subject
             lines.append(f"- {summary} ({commit.short_sha}, {commit.importance_band})")
         lines.append("")
     other_group = by_type.get("other", [])
     if other_group:
         lines.append(f"### {config['other_label']}")
-        for commit in sorted(other_group, key=lambda c: c.importance_score, reverse=True):
+        for commit in other_group:
             summary = commit.summary or commit.subject
             lines.append(f"- {summary} ({commit.short_sha}, {commit.importance_band})")
         lines.append("")

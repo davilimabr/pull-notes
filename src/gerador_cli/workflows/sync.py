@@ -14,7 +14,8 @@ from ..domain.services.aggregation import (
     build_convention_report,
     classify_commit,
     compute_importance,
-    summarize_commit,
+    group_commits_by_type,
+    summarize_commit_group,
 )
 from ..domain.services.composition import (
     build_pr_fields,
@@ -37,26 +38,49 @@ def _score_commits(commits, config):
         commit.importance_score, commit.importance_band = compute_importance(commit, config)
 
 
-def _summarize_commits(commits, config, llm_model: str, no_llm: bool) -> bool:
+def _summarize_commits(grouped_commits, config, llm_model: str, no_llm: bool) -> bool:
     if no_llm:
-        for commit in commits:
-            commit.summary = commit.subject
+        for _, commits in grouped_commits:
+            for commit in commits:
+                commit.summary = commit.subject
         return False
 
     llm_failed = False
-    for commit in commits:
+    for change_type, commits in grouped_commits:
+        type_label = config["commit_types"].get(change_type, {}).get("label") or config.get("other_label", change_type)
         if llm_failed:
-            commit.summary = commit.subject
+            for commit in commits:
+                commit.summary = commit.subject
             continue
         try:
-            commit.summary = summarize_commit(commit, config, llm_model)
+            summaries = summarize_commit_group(change_type, commits, config, llm_model)
         except Exception as exc:
             llm_failed = True
-            commit.summary = commit.subject
+            for commit in commits:
+                commit.summary = commit.subject
             print(
                 (
-                    f"WARNING: Falha ao resumir commit {commit.short_sha}: {exc}. "
-                    "Usando o assunto como resumo para todos os commits."
+                    f"WARNING: Falha ao resumir grupo {type_label}: {exc}. "
+                    "Usando o assunto como resumo para todos os commits remanescentes."
+                ),
+                file=sys.stderr,
+            )
+            continue
+
+        missing = []
+        for commit in commits:
+            summary_text = summaries.get(commit.short_sha)
+            if not summary_text:
+                commit.summary = commit.subject
+                missing.append(commit.short_sha)
+            else:
+                commit.summary = summary_text
+
+        if missing:
+            print(
+                (
+                    f"WARNING: Sem resumo retornado para commits {', '.join(missing)} "
+                    f"no grupo {type_label}; usando o assunto."
                 ),
                 file=sys.stderr,
             )
@@ -134,11 +158,12 @@ def run_workflow(args) -> int:
     export_convention_report(convention_report, output_dir)
 
     _score_commits(commits, config)
-    llm_ready = _summarize_commits(commits, config, llm_model, args.no_llm)
+    grouped_commits = group_commits_by_type(commits, config)
+    llm_ready = _summarize_commits(grouped_commits, config, llm_model, args.no_llm)
 
     export_commits(commits, output_dir)
 
-    changes_md = render_changes_by_type(commits, config)
+    changes_md = render_changes_by_type(grouped_commits, config)
 
     if args.generate in {"pr", "both"}:
         alerts = [c.subject for c in commits if not c.is_conventional]

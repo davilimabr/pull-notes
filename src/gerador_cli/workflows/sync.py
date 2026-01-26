@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Dict
 
 from ..adapters.filesystem import ensure_dir, resolve_cli_or_absolute, resolve_cli_path, resolve_repo_path
 from ..config import load_config, validate_config
@@ -15,13 +16,13 @@ from ..domain.services.aggregation import (
     classify_commit,
     compute_importance,
     group_commits_by_type,
-    summarize_commit_group,
+    summarize_all_groups,
 )
 from ..domain.services.composition import (
     build_pr_fields,
     build_release_fields,
     build_version_label,
-    render_changes_by_type,
+    render_changes_by_type_from_summaries,
     render_template,
 )
 from ..domain.services.data_collection import get_commits
@@ -38,53 +39,29 @@ def _score_commits(commits, config):
         commit.importance_score, commit.importance_band = compute_importance(commit, config)
 
 
-def _summarize_commits(grouped_commits, config, llm_model: str, no_llm: bool) -> bool:
+def _generate_summaries_for_output(grouped_commits, config, llm_model: str, output_type: str, no_llm: bool) -> Dict[str, str]:
+    """Generate summaries for each group of commits based on output type.
+
+    Args:
+        grouped_commits: List of (type, commits) tuples
+        config: Configuration dictionary
+        llm_model: LLM model to use
+        output_type: Either "pr" (technical) or "release" (user-facing)
+        no_llm: If True, use commit subjects as fallback
+
+    Returns:
+        Dictionary mapping change_type to formatted summary text (bullet points)
+    """
     if no_llm:
-        for _, commits in grouped_commits:
-            for commit in commits:
-                commit.summary = commit.subject
-        return False
+        # Generate simple bullet list from subjects
+        summaries = {}
+        for change_type, commits in grouped_commits:
+            if commits:
+                bullets = [f"- {commit.subject}" for commit in commits]
+                summaries[change_type] = "\n".join(bullets)
+        return summaries
 
-    llm_failed = False
-    for change_type, commits in grouped_commits:
-        type_label = config["commit_types"].get(change_type, {}).get("label") or config.get("other_label", change_type)
-        if llm_failed:
-            for commit in commits:
-                commit.summary = commit.subject
-            continue
-        try:
-            summaries = summarize_commit_group(change_type, commits, config, llm_model)
-        except Exception as exc:
-            llm_failed = True
-            for commit in commits:
-                commit.summary = commit.subject
-            print(
-                (
-                    f"WARNING: Falha ao resumir grupo {type_label}: {exc}. "
-                    "Usando o assunto como resumo para todos os commits remanescentes."
-                ),
-                file=sys.stderr,
-            )
-            continue
-
-        missing = []
-        for commit in commits:
-            summary_text = summaries.get(commit.short_sha)
-            if not summary_text:
-                commit.summary = commit.subject
-                missing.append(commit.short_sha)
-            else:
-                commit.summary = summary_text
-
-        if missing:
-            print(
-                (
-                    f"WARNING: Sem resumo retornado para commits {', '.join(missing)} "
-                    f"no grupo {type_label}; usando o assunto."
-                ),
-                file=sys.stderr,
-            )
-    return not llm_failed
+    return summarize_all_groups(grouped_commits, config, llm_model, output_type)
 
 
 def _warn_on_non_conventional(commits) -> None:
@@ -153,13 +130,23 @@ def run_workflow(args) -> int:
 
     _score_commits(commits, config)
     grouped_commits = group_commits_by_type(commits, config)
-    llm_ready = _summarize_commits(grouped_commits, config, llm_model, args.no_llm)
 
     export_commits(commits, output_dir)
 
-    changes_md = render_changes_by_type(grouped_commits, config)
+    # Generate summaries based on what output types we need
+    pr_summaries = {}
+    release_summaries = {}
 
     if args.generate in {"pr", "both"}:
+        pr_summaries = _generate_summaries_for_output(grouped_commits, config, llm_model, "pr", args.no_llm)
+
+    if args.generate in {"release", "both"}:
+        release_summaries = _generate_summaries_for_output(grouped_commits, config, llm_model, "release", args.no_llm)
+
+    if args.generate in {"pr", "both"}:
+        # Generate PR-specific changes (technical details)
+        pr_changes_md = render_changes_by_type_from_summaries(grouped_commits, pr_summaries, config)
+
         alerts = [c.subject for c in commits if not c.is_conventional]
         alerts_md = "\n".join(f"- {a}" for a in alerts) if alerts else config["alerts"]["none_text"]
         pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
@@ -170,7 +157,7 @@ def run_workflow(args) -> int:
             raise SystemExit(f"Falha ao gerar campos de PR com LLM: {exc}") from exc
         pr_fields.update(
             {
-                "changes_by_type": changes_md,
+                "changes_by_type": pr_changes_md,
                 "alerts": alerts_md,
             }
         )
@@ -178,6 +165,9 @@ def run_workflow(args) -> int:
         export_text_document(pr_text, output_dir, "pr.md")
 
     if args.generate in {"release", "both"}:
+        # Generate Release-specific changes (user-facing functionality)
+        release_changes_md = render_changes_by_type_from_summaries(grouped_commits, release_summaries, config)
+
         domain_cfg = config["domain"]
         if not domain_text and not args.refresh_domain:
             domain_out = resolve_repo_path(repo_dir, domain_cfg["output_path"])
@@ -195,7 +185,7 @@ def run_workflow(args) -> int:
         release_fields.update(
             {
                 "version": version_label,
-                "changes_by_type": changes_md,
+                "changes_by_type": release_changes_md,
             }
         )
         release_text = render_template(release_template, release_fields)

@@ -35,12 +35,19 @@ def extract_json(text: str) -> Dict:
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:
-        raise ValueError("No JSON object found")
-    return json.loads(text[start : end + 1])
+        raise ValueError(f"No JSON object found. LLM response: {text[:500]}")
+
+    json_str = text[start : end + 1]
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON from LLM. Error: {e}. JSON string: {json_str[:500]}")
 
 
 def build_pr_fields(commits: List[Commit], config: Dict, model: str) -> Dict[str, str]:
     """Build PR fields using commit summaries."""
+    import sys
+
     prompt = load_prompt(
         "pr_fields",
         {
@@ -48,7 +55,9 @@ def build_pr_fields(commits: List[Commit], config: Dict, model: str) -> Dict[str
             "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
         },
     )
+    print(f"\n=== DEBUG: PR Fields Prompt (first 1000 chars) ===\n{prompt[:1000]}\n", file=sys.stderr)
     raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
+    print(f"\n=== DEBUG: LLM Response (first 1000 chars) ===\n{raw[:1000]}\n", file=sys.stderr)
     return extract_json(raw)
 
 
@@ -56,6 +65,8 @@ def build_release_fields(
     commits: List[Commit], domain_xml: str, config: Dict, model: str, version: str
 ) -> Dict[str, str]:
     """Build release fields using commit summaries and domain context."""
+    import sys
+
     prompt = load_prompt(
         "release_fields",
         {
@@ -65,7 +76,9 @@ def build_release_fields(
             "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
         },
     )
+    print(f"\n=== DEBUG: Release Fields Prompt (first 1000 chars) ===\n{prompt[:1000]}\n", file=sys.stderr)
     raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
+    print(f"\n=== DEBUG: LLM Response (first 1000 chars) ===\n{raw[:1000]}\n", file=sys.stderr)
     return extract_json(raw)
 
 
@@ -78,31 +91,46 @@ def render_template(template_text: str, values: Dict[str, str]) -> str:
     return out.strip() + "\n"
 
 
-def render_changes_by_type(
-    commits_or_groups: List[Commit] | List[Tuple[str, List[Commit]]], config: Dict
+def render_changes_by_type_from_summaries(
+    grouped_commits: List[Tuple[str, List[Commit]]], summaries_by_type: Dict[str, str], config: Dict
 ) -> str:
-    """Render changes grouped by commit type."""
-    if commits_or_groups and isinstance(commits_or_groups[0], tuple):
-        grouped_commits = commits_or_groups  # type: ignore[assignment]
-    else:
-        grouped_commits = group_commits_by_type(commits_or_groups, config)  # type: ignore[arg-type]
+    """Render changes grouped by commit type using pre-generated summaries.
 
+    Args:
+        grouped_commits: List of (type, commits) tuples
+        summaries_by_type: Dictionary mapping change_type to formatted summary text (bullet points)
+        config: Configuration dictionary
+
+    Returns:
+        Formatted markdown with changes by type
+    """
     by_type: Dict[str, List[Commit]] = {type_name: group for type_name, group in grouped_commits}
     lines = []
+
     for type_name, data in config["commit_types"].items():
         group = by_type.get(type_name, [])
         if not group:
             continue
+
         lines.append(f"### {data['label']}")
-        for commit in group:
-            summary = commit.summary or commit.subject
-            lines.append(f"- {summary} ({commit.short_sha}, {commit.importance_band})")
+        summary_text = summaries_by_type.get(type_name, "")
+        if summary_text:
+            lines.append(summary_text)
+        else:
+            # Fallback to individual commit subjects
+            for commit in group:
+                lines.append(f"- {commit.subject}")
         lines.append("")
+
     other_group = by_type.get("other", [])
     if other_group:
         lines.append(f"### {config['other_label']}")
-        for commit in other_group:
-            summary = commit.summary or commit.subject
-            lines.append(f"- {summary} ({commit.short_sha}, {commit.importance_band})")
+        summary_text = summaries_by_type.get("other", "")
+        if summary_text:
+            lines.append(summary_text)
+        else:
+            for commit in other_group:
+                lines.append(f"- {commit.subject}")
         lines.append("")
+
     return "\n".join(lines).strip()

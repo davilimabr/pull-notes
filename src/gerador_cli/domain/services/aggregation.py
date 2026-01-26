@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from typing import Dict, List, Tuple
 
 from ...adapters.http import call_ollama
@@ -10,7 +11,6 @@ from ...prompts import load_prompt
 from ..models import Commit
 from .data_collection import trim_diff
 
-_GROUP_LINE_RE = re.compile(r"^(?:[-*]\s*)?(?P<sha>[0-9a-fA-F]{7,})\s*[:\-]\s*(?P<summary>.+)$")
 _JS_REGEX_RE = re.compile(r"^/(.+)/([a-zA-Z]*)$")
 
 
@@ -141,30 +141,30 @@ def _build_commit_blocks(commits: List[Commit], diff_cfg: Dict) -> str:
     return "\n\n".join(blocks)
 
 
-def _parse_group_summary_output(raw: str, expected_shas: List[str]) -> Dict[str, str]:
-    summaries: Dict[str, str] = {}
-    expected_set = {sha.lower() for sha in expected_shas}
-    for line in raw.splitlines():
-        cleaned = line.strip()
-        if not cleaned:
-            continue
-        match = _GROUP_LINE_RE.match(cleaned)
-        if not match:
-            continue
-        sha = match.group("sha").lower()[:7]
-        summary = match.group("summary").strip()
-        if sha in expected_set and sha not in summaries and summary:
-            summaries[sha] = summary
-    return summaries
+def summarize_commit_group(
+    commit_type: str, commits: List[Commit], config: Dict, model: str, output_type: str = "pr"
+) -> str:
+    """Summarize a list of commits of the same type in a single LLM call.
 
+    Args:
+        commit_type: Type of commits (feat, fix, etc.)
+        commits: List of commits to summarize
+        config: Configuration dictionary
+        model: LLM model to use
+        output_type: Either "pr" (technical details) or "release" (user-facing)
 
-def summarize_commit_group(commit_type: str, commits: List[Commit], config: Dict, model: str) -> Dict[str, str]:
-    """Summarize a list of commits of the same type in a single LLM call."""
+    Returns:
+        Formatted bullet point list as a string
+    """
     commit_types = config.get("commit_types", {})
     label = commit_types.get(commit_type, {}).get("label") or config.get("other_label", commit_type)
     diff_cfg = config["diff"]
+
+    # Choose the appropriate prompt based on output type
+    prompt_name = f"commit_group_summary_{output_type}"
+
     prompt = load_prompt(
-        "commit_group_summary",
+        prompt_name,
         {
             "language_hint": build_language_hint(config["language"]),
             "change_type_label": label,
@@ -172,7 +172,49 @@ def summarize_commit_group(commit_type: str, commits: List[Commit], config: Dict
         },
     )
     raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
-    return _parse_group_summary_output(raw, [c.short_sha for c in commits])
+
+    # Return the raw output, which should be clean bullet points
+    print(f"DEBUG: Resumo bruto para tipo {commit_type}:\n{raw}", file=sys.stderr)
+    return raw.strip()
+
+
+def summarize_all_groups(
+    grouped_commits: List[Tuple[str, List[Commit]]], config: Dict, model: str, output_type: str = "pr"
+) -> Dict[str, str]:
+    """Summarize all commit groups in parallel LLM calls.
+
+    Args:
+        grouped_commits: List of (type, commits) tuples
+        config: Configuration dictionary
+        model: LLM model to use
+        output_type: Either "pr" (technical) or "release" (user-facing)
+
+    Returns:
+        Dictionary mapping change_type to formatted summary text
+    """
+    summaries: Dict[str, str] = {}
+
+    for change_type, commits in grouped_commits:
+        if not commits:
+            continue
+
+        try:
+            summary_text = summarize_commit_group(change_type, commits, config, model, output_type)
+            summaries[change_type] = summary_text
+        except Exception as exc:
+            # On error, generate fallback bullets from commit subjects
+            type_label = config["commit_types"].get(change_type, {}).get("label") or config.get(
+                "other_label", change_type
+            )
+            print(
+                f"WARNING: Falha ao resumir grupo {type_label}: {exc}. Usando assuntos como fallback.",
+                file=sys.stderr,
+            )
+            # Generate simple bullets from subjects
+            bullets = [f"- {commit.subject}" for commit in commits]
+            summaries[change_type] = "\n".join(bullets)
+
+    return summaries
 
 
 def build_convention_report(commits: List[Commit]) -> str:

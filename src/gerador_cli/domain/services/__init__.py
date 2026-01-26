@@ -13,7 +13,6 @@ from .composition import (
     build_pr_fields,
     build_release_fields,
     build_version_label,
-    render_changes_by_type,
     render_template,
 )
 from .data_collection import get_commits, parse_git_log, trim_diff
@@ -33,7 +32,6 @@ __all__ = [
     "get_commits",
     "group_commits_by_type",
     "parse_git_log",
-    "render_changes_by_type",
     "render_template",
     "summarize_commit",
     "summarize_commit_group",

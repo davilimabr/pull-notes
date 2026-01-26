@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional
 
@@ -104,9 +105,22 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
             raise RuntimeError(f"{exc} ; fallback with '{origin_range}' failed: {retry_exc}") from retry_exc
 
     commits = parse_git_log(log_text)
-    for commit in commits:
-        commit.body = run_git(repo_dir, ["show", "-s", "--format=%B", commit.sha]).strip()
-        commit.diff = run_git(repo_dir, ["show", "--pretty=format:", "--unified=3", "--no-color", commit.sha])
+
+    # Extrai body e diff de forma assíncrona usando ThreadPoolExecutor
+    def fetch_commit_details(commit: Commit) -> tuple[Commit, str, str]:
+        """Busca body e diff de um commit."""
+        body = run_git(repo_dir, ["show", "-s", "--format=%B", commit.sha]).strip()
+        diff = run_git(repo_dir, ["show", "--pretty=format:", "--unified=3", "--no-color", commit.sha])
+        return commit, body, diff
+
+    # Executa todas as chamadas git em paralelo
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(fetch_commit_details, commit): commit for commit in commits}
+        for future in as_completed(futures):
+            commit, body, diff = future.result()
+            commit.body = body
+            commit.diff = diff
+
     return commits
 
 

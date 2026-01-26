@@ -1,0 +1,25 @@
+# Prompt: Resumir um grupo de commits em bullets para descrição de Pull Request.
+
+You need to summarize a compilation of "{{change_type_label}}" type changes for a Pull Request description.
+
+Create a list of bullet points that summarizes all the changes made by the commits, providing TECHNICAL DETAILS.
+
+## Guidelines for PR summaries:
+- Include technical implementation details (classes, methods, modules affected)
+- Mention specific technologies, frameworks, or libraries used
+- Reference architectural changes or patterns applied
+- Include information about code structure changes
+- Mention specific files or components modified when relevant
+- Use technical terminology appropriate for developers
+
+Keep the order of the commits, as they are sorted by level of importance (most important first).
+
+The final text should be in {{language_hint}}
+
+Return ONLY the bullet points in the following format:
+- Brief technical summary of the change (1-2 sentences with implementation details)
+
+Do NOT include commit SHA or any other metadata in the output.
+
+Commit list:
+{{commit_blocks}}

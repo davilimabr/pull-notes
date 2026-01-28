@@ -44,15 +44,41 @@ def extract_json(text: str) -> Dict:
         raise ValueError(f"Invalid JSON from LLM. Error: {e}. JSON string: {json_str[:500]}")
 
 
-def build_pr_fields(commits: List[Commit], config: Dict, model: str) -> Dict[str, str]:
-    """Build PR fields using commit summaries."""
+def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str) -> Dict[str, str]:
+    """Build PR fields using grouped commit summaries.
+
+    Args:
+        grouped_summaries: Dictionary mapping change_type to formatted summary text (bullet points)
+        config: Configuration dictionary
+        model: LLM model to use
+
+    Returns:
+        Dictionary with PR fields (title, summary, risks, testing)
+    """
     import sys
+
+    # Format grouped summaries for the prompt
+    summaries_lines = []
+    for change_type in config["commit_types"]:
+        if change_type in grouped_summaries:
+            label = config["commit_types"][change_type]["label"]
+            summaries_lines.append(f"### {label}")
+            summaries_lines.append(grouped_summaries[change_type])
+            summaries_lines.append("")
+
+    # Include "other" group if present
+    if "other" in grouped_summaries:
+        summaries_lines.append(f"### {config['other_label']}")
+        summaries_lines.append(grouped_summaries["other"])
+        summaries_lines.append("")
+
+    formatted_summaries = "\n".join(summaries_lines).strip()
 
     prompt = load_prompt(
         "pr_fields",
         {
             "language_hint": build_language_hint(config["language"]),
-            "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
+            "commit_summaries": formatted_summaries,
         },
     )
     print(f"\n=== DEBUG: PR Fields Prompt (first 1000 chars) ===\n{prompt[:1000]}\n", file=sys.stderr)
@@ -62,10 +88,38 @@ def build_pr_fields(commits: List[Commit], config: Dict, model: str) -> Dict[str
 
 
 def build_release_fields(
-    commits: List[Commit], domain_xml: str, config: Dict, model: str, version: str
+    grouped_summaries: Dict[str, str], domain_xml: str, config: Dict, model: str, version: str
 ) -> Dict[str, str]:
-    """Build release fields using commit summaries and domain context."""
+    """Build release fields using grouped commit summaries and domain context.
+
+    Args:
+        grouped_summaries: Dictionary mapping change_type to formatted summary text (bullet points)
+        domain_xml: Domain context XML
+        config: Configuration dictionary
+        model: LLM model to use
+        version: Release version label
+
+    Returns:
+        Dictionary with release fields (executive_summary, highlights, etc.)
+    """
     import sys
+
+    # Format grouped summaries for the prompt
+    summaries_lines = []
+    for change_type in config["commit_types"]:
+        if change_type in grouped_summaries:
+            label = config["commit_types"][change_type]["label"]
+            summaries_lines.append(f"### {label}")
+            summaries_lines.append(grouped_summaries[change_type])
+            summaries_lines.append("")
+
+    # Include "other" group if present
+    if "other" in grouped_summaries:
+        summaries_lines.append(f"### {config['other_label']}")
+        summaries_lines.append(grouped_summaries["other"])
+        summaries_lines.append("")
+
+    formatted_summaries = "\n".join(summaries_lines).strip()
 
     prompt = load_prompt(
         "release_fields",
@@ -73,7 +127,7 @@ def build_release_fields(
             "language_hint": build_language_hint(config["language"]),
             "release_version": version,
             "domain_xml": domain_xml,
-            "commit_summaries": "\n".join(f"- {c.summary or c.subject}" for c in commits),
+            "commit_summaries": formatted_summaries,
         },
     )
     print(f"\n=== DEBUG: Release Fields Prompt (first 1000 chars) ===\n{prompt[:1000]}\n", file=sys.stderr)

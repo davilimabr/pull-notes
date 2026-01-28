@@ -152,7 +152,7 @@ def run_workflow(args) -> int:
         pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
         pr_template = pr_template_path.read_text(encoding="utf-8")
         try:
-            pr_fields = build_pr_fields(commits, config, llm_model)
+            pr_fields = build_pr_fields(pr_summaries, config, llm_model)
         except Exception as exc:
             raise SystemExit(f"Falha ao gerar campos de PR com LLM: {exc}") from exc
         pr_fields.update(
@@ -179,7 +179,7 @@ def run_workflow(args) -> int:
         version_label = build_version_label(args.version, args.revision_range, config["release"])
         domain_trimmed = domain_text[:6000]
         try:
-            release_fields = build_release_fields(commits, domain_trimmed, config, llm_model, version_label)
+            release_fields = build_release_fields(release_summaries, domain_trimmed, config, llm_model, version_label)
         except Exception as exc:
             raise SystemExit(f"Falha ao gerar campos de release com LLM: {exc}") from exc
         release_fields.update(

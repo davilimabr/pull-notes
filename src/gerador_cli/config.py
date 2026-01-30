@@ -64,8 +64,6 @@ def validate_config(config: Dict, *, generate: str) -> None:
         require(("domain", "output_path"))
         require(("release", "version_template"))
         require(("release", "date_format"))
-        require(("domain", "template_path"))
-        require(("domain", "xsd_path"))
         require(("domain", "model"))
         require(("domain", "max_total_bytes"))
         require(("domain", "max_file_bytes"))

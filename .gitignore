@@ -33,6 +33,14 @@ Thumbs.db
 out/
 .gerador/
 dominio.preenchido*.xml
+dominio_*.xml
 
 # Logs
 *.log
+
+# Feature docs
+# temp/*
+
+# Claude
+.claude/
+docs/plans/*

@@ -7,7 +7,7 @@ You are a careful assistant generating release notes. Based on the commit summar
 Release version: {{release_version}}
 
 Domain context (for understanding the project):
-{{domain_xml}}
+{{domain_context}}
 
 Commit summaries:
 {{commit_summaries}}

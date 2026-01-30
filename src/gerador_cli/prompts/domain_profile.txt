@@ -1,0 +1,22 @@
+# Prompt: Gerar perfil de dominio do projeto em JSON. Nao enviar esta linha ao LLM.
+
+You are analyzing a software repository to extract domain information.
+
+REPOSITORY CONTEXT:
+{{repo_context}}
+
+PRE-FILLED ANCHORS (extracted automatically from code):
+{{pre_filled_anchors}}
+
+Based on the repository context above, generate a complete ProjectProfile.
+
+RULES:
+1. Use only information present in the repository (README, docs, code, configs).
+2. If a field cannot be determined with high confidence, use empty values and lower confidence.
+3. Do not invent libraries, names, metrics, or integrations not explicitly present.
+4. The domain_anchors are already filled - do not modify them.
+5. For confidence values, use 0.0 to 1.0 where 1.0 means absolute certainty.
+
+{{language_hint}}
+
+Return ONLY the JSON object matching the ProjectProfile schema.

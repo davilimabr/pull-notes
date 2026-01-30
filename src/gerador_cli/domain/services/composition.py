@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TYPE_CHECKING
 
-from ...adapters.http import call_ollama
 from ...prompts import load_prompt
 from ..models import Commit
 from .aggregation import build_language_hint, group_commits_by_type
+
+if TYPE_CHECKING:
+    from ..schemas import PRFields, ReleaseFields
 
 
 def build_version_label(version_override: str, revision_range: str | None, release_cfg: Dict) -> str:
@@ -30,21 +31,25 @@ def build_version_label(version_override: str, revision_range: str | None, relea
     return label
 
 
-def extract_json(text: str) -> Dict:
-    """Extract JSON object from a string."""
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError(f"No JSON object found. LLM response: {text[:500]}")
+def _format_grouped_summaries(grouped_summaries: Dict[str, str], config: Dict) -> str:
+    """Format grouped summaries for LLM prompt."""
+    summaries_lines = []
+    for change_type in config["commit_types"]:
+        if change_type in grouped_summaries:
+            label = config["commit_types"][change_type]["label"]
+            summaries_lines.append(f"### {label}")
+            summaries_lines.append(grouped_summaries[change_type])
+            summaries_lines.append("")
 
-    json_str = text[start : end + 1]
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON from LLM. Error: {e}. JSON string: {json_str[:500]}")
+    if "other" in grouped_summaries:
+        summaries_lines.append(f"### {config['other_label']}")
+        summaries_lines.append(grouped_summaries["other"])
+        summaries_lines.append("")
+
+    return "\n".join(summaries_lines).strip()
 
 
-def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str) -> Dict[str, str]:
+def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str) -> "PRFields":
     """Build PR fields using grouped commit summaries.
 
     Args:
@@ -53,26 +58,18 @@ def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str)
         model: LLM model to use
 
     Returns:
-        Dictionary with PR fields (title, summary, risks, testing)
+        PRFields with validated PR data
     """
-    import sys
+    from ..schemas import PRFields
+    from ...adapters.llm_structured import StructuredLLMClient
 
-    # Format grouped summaries for the prompt
-    summaries_lines = []
-    for change_type in config["commit_types"]:
-        if change_type in grouped_summaries:
-            label = config["commit_types"][change_type]["label"]
-            summaries_lines.append(f"### {label}")
-            summaries_lines.append(grouped_summaries[change_type])
-            summaries_lines.append("")
+    client = StructuredLLMClient(
+        model=model,
+        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
+        max_retries=config.get("llm_max_retries", 3),
+    )
 
-    # Include "other" group if present
-    if "other" in grouped_summaries:
-        summaries_lines.append(f"### {config['other_label']}")
-        summaries_lines.append(grouped_summaries["other"])
-        summaries_lines.append("")
-
-    formatted_summaries = "\n".join(summaries_lines).strip()
+    formatted_summaries = _format_grouped_summaries(grouped_summaries, config)
 
     prompt = load_prompt(
         "pr_fields",
@@ -81,59 +78,47 @@ def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str)
             "commit_summaries": formatted_summaries,
         },
     )
-    print(f"\n=== DEBUG: PR Fields Prompt (first 1000 chars) ===\n{prompt[:1000]}\n", file=sys.stderr)
-    raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
-    print(f"\n=== DEBUG: LLM Response (first 1000 chars) ===\n{raw[:1000]}\n", file=sys.stderr)
-    return extract_json(raw)
+
+    return client.invoke_structured(prompt, PRFields)
 
 
 def build_release_fields(
-    grouped_summaries: Dict[str, str], domain_xml: str, config: Dict, model: str, version: str
-) -> Dict[str, str]:
+    grouped_summaries: Dict[str, str], domain_context: str, config: Dict, model: str, version: str
+) -> "ReleaseFields":
     """Build release fields using grouped commit summaries and domain context.
 
     Args:
         grouped_summaries: Dictionary mapping change_type to formatted summary text (bullet points)
-        domain_xml: Domain context XML
+        domain_context: Domain context (XML string or JSON string)
         config: Configuration dictionary
         model: LLM model to use
         version: Release version label
 
     Returns:
-        Dictionary with release fields (executive_summary, highlights, etc.)
+        ReleaseFields with validated release data
     """
-    import sys
+    from ..schemas import ReleaseFields
+    from ...adapters.llm_structured import StructuredLLMClient
 
-    # Format grouped summaries for the prompt
-    summaries_lines = []
-    for change_type in config["commit_types"]:
-        if change_type in grouped_summaries:
-            label = config["commit_types"][change_type]["label"]
-            summaries_lines.append(f"### {label}")
-            summaries_lines.append(grouped_summaries[change_type])
-            summaries_lines.append("")
+    client = StructuredLLMClient(
+        model=model,
+        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
+        max_retries=config.get("llm_max_retries", 3),
+    )
 
-    # Include "other" group if present
-    if "other" in grouped_summaries:
-        summaries_lines.append(f"### {config['other_label']}")
-        summaries_lines.append(grouped_summaries["other"])
-        summaries_lines.append("")
-
-    formatted_summaries = "\n".join(summaries_lines).strip()
+    formatted_summaries = _format_grouped_summaries(grouped_summaries, config)
 
     prompt = load_prompt(
         "release_fields",
         {
             "language_hint": build_language_hint(config["language"]),
             "release_version": version,
-            "domain_xml": domain_xml,
+            "domain_context": domain_context[:6000],  # Limit size
             "commit_summaries": formatted_summaries,
         },
     )
-    print(f"\n=== DEBUG: Release Fields Prompt (first 1000 chars) ===\n{prompt[:1000]}\n", file=sys.stderr)
-    raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
-    print(f"\n=== DEBUG: LLM Response (first 1000 chars) ===\n{raw[:1000]}\n", file=sys.stderr)
-    return extract_json(raw)
+
+    return client.invoke_structured(prompt, ReleaseFields)
 
 
 def render_template(template_text: str, values: Dict[str, str]) -> str:

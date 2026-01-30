@@ -6,7 +6,6 @@ import re
 import sys
 from typing import Dict, List, Tuple
 
-from ...adapters.http import call_ollama
 from ...prompts import load_prompt
 from ..models import Commit
 from .data_collection import trim_diff
@@ -104,6 +103,8 @@ def build_language_hint(language: str) -> str:
 
 def summarize_commit(commit: Commit, config: Dict, model: str) -> str:
     """Summarize commit using LLM."""
+    from ...adapters.http import call_ollama
+
     diff_cfg = config["diff"]
     diff = trim_diff(commit.diff, diff_cfg["max_lines"], diff_cfg["max_bytes"])
     prompt = load_prompt(
@@ -144,7 +145,7 @@ def _build_commit_blocks(commits: List[Commit], diff_cfg: Dict) -> str:
 def summarize_commit_group(
     commit_type: str, commits: List[Commit], config: Dict, model: str, output_type: str = "pr"
 ) -> str:
-    """Summarize a list of commits of the same type in a single LLM call.
+    """Summarize a list of commits of the same type using structured output.
 
     Args:
         commit_type: Type of commits (feat, fix, etc.)
@@ -154,8 +155,11 @@ def summarize_commit_group(
         output_type: Either "pr" (technical details) or "release" (user-facing)
 
     Returns:
-        Formatted bullet point list as a string
+        Formatted bullet points as string (for backward compatibility with templates)
     """
+    from ..schemas import CommitGroupSummary
+    from ...adapters.llm_structured import StructuredLLMClient
+
     commit_types = config.get("commit_types", {})
     label = commit_types.get(commit_type, {}).get("label") or config.get("other_label", commit_type)
     diff_cfg = config["diff"]
@@ -171,11 +175,17 @@ def summarize_commit_group(
             "commit_blocks": _build_commit_blocks(commits, diff_cfg),
         },
     )
-    raw = call_ollama(model, prompt, config.get("llm_timeout_seconds"))
 
-    # Return the raw output, which should be clean bullet points
-    print(f"DEBUG: Resumo bruto para tipo {commit_type}:\n{raw}", file=sys.stderr)
-    return raw.strip()
+    client = StructuredLLMClient(
+        model=model,
+        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
+        max_retries=config.get("llm_max_retries", 3),
+    )
+
+    result = client.invoke_structured(prompt, CommitGroupSummary)
+
+    # Format as bullet points for template compatibility
+    return "\n".join(f"- {point}" for point in result.summary_points)
 
 
 def summarize_all_groups(

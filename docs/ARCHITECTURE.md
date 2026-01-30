@@ -169,10 +169,6 @@ src/gerador_cli/
 +-- templates/                 # RECURSOS
 |   +-- *.md                   # Output Templates
 |
-+-- xml/                       # RECURSOS
-|   +-- dominio.xml            # Domain XML Template
-|   +-- XSD_dominio.xml        # XML Schema
-|
 +-- cli.py                     # INTERFACE (Driving Adapter)
 +-- config.py                  # CONFIGURACAO
 +-- __main__.py                # ENTRY POINT

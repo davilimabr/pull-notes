@@ -1,23 +1,22 @@
-"""Domain extraction helpers and CLI wrapper for building the domain XML."""
+"""Domain extraction helpers for building repository context.
+
+This module provides utilities for:
+- Indexing text files in a repository
+- Extracting domain anchors (keywords, artifacts)
+- Building context snippets for LLM prompts
+
+Note: XML-related functionality has been removed. Domain profiles are now
+generated using Pydantic models in domain_profile.py.
+"""
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
-import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
-
-from lxml import etree
-
-from .filesystem import resolve_repo_path
-from .http import call_ollama
-from ..config import load_config, validate_config
-from ..domain.errors import DomainBuildError
-from ..prompts import load_prompt
 
 DEFAULT_MAX_TOTAL_BYTES = 400_000
 DEFAULT_MAX_FILE_BYTES = 40_000
@@ -231,7 +230,7 @@ def top_keywords(text: str, top_n: int = 30) -> List[str]:
 
 
 def extract_anchors(index: Sequence[IndexedFile]) -> Dict[str, List[Tuple[str, str]]]:
-    """Extract keywords and artifacts used as anchors for the domain XML."""
+    """Extract keywords and artifacts used as anchors for the domain profile."""
     kw_scores: Dict[str, int] = {}
     kw_sources: Dict[str, List[str]] = {}
     artifacts: List[Tuple[str, str]] = []
@@ -300,172 +299,3 @@ def build_context_snippets(index: Sequence[IndexedFile], budget: int = DEFAULT_M
         parts.append(chunk)
         total += size_b
     return "".join(parts)
-
-
-def load_xml(path: Path) -> etree._ElementTree:
-    return etree.parse(str(path))
-
-
-def validate_xml(xml_tree: etree._ElementTree, xsd_path: Path) -> Tuple[bool, str]:
-    schema_doc = etree.parse(str(xsd_path))
-    schema = etree.XMLSchema(schema_doc)
-    try:
-        schema.assertValid(xml_tree)
-        return True, "OK"
-    except etree.DocumentInvalid as exc:
-        return False, str(exc)
-
-
-def fill_domain_anchors(xml_tree: etree._ElementTree, anchors: Dict[str, List[Tuple[str, str]]]) -> None:
-    """Fill <domainAnchors> in the template while keeping other content intact."""
-    root = xml_tree.getroot()
-    domain = root.find(".//domain")
-    if domain is None:
-        raise DomainBuildError("Tag <domain> not found in XML template.")
-
-    anchors_node = domain.find("domainAnchors")
-    if anchors_node is None:
-        anchors_node = etree.SubElement(domain, "domainAnchors")
-
-    keywords_node = anchors_node.find("keywords")
-    if keywords_node is not None:
-        anchors_node.remove(keywords_node)
-    keywords_node = etree.SubElement(anchors_node, "keywords")
-    for kw, source in anchors.get("keywords", []):
-        kw_el = etree.SubElement(keywords_node, "kw")
-        kw_el.text = kw
-        kw_el.set("source", source)
-
-    artifacts_node = anchors_node.find("artifacts")
-    if artifacts_node is not None:
-        anchors_node.remove(artifacts_node)
-    artifacts_node = etree.SubElement(anchors_node, "artifacts")
-    for kind, name in anchors.get("artifacts", []):
-        art_el = etree.SubElement(artifacts_node, "artifact")
-        art_el.set("kind", kind)
-        art_el.set("name", name)
-
-
-def build_prompt(repo_context: str, xml_for_llm: str) -> str:
-    return load_prompt(
-        "domain_xml",
-        {
-            "repo_context": repo_context,
-            "xml_template": xml_for_llm,
-        },
-    )
-
-
-def call_llm_for_xml(model: str, prompt: str, timeout_seconds: float | int | None = None) -> str:
-    content = call_ollama(model, prompt, timeout_seconds)
-    if not content:
-        raise DomainBuildError("Empty response from LLM.")
-    return content.strip()
-
-
-def _save_debug_output(path: Path, xml_text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(xml_text, encoding="utf-8")
-
-
-def generate_domain_xml(
-    repo_dir: Path,
-    template_path: Path,
-    xsd_path: Path,
-    model_name: str,
-    *,
-    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
-    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
-    llm_timeout_seconds: float | int | None = None,
-    debug_output_path: Path | None = None,
-) -> str:
-    """Build and validate the domain XML using repository context and an LLM."""
-    repo_dir = repo_dir.resolve()
-    template_path = template_path.resolve()
-    xsd_path = xsd_path.resolve()
-
-    index = build_repository_index(repo_dir, max_total_bytes, max_file_bytes)
-    if not index:
-        raise DomainBuildError("No eligible text files found in repository.")
-
-    anchors = extract_anchors(index)
-    xml_tree = load_xml(template_path)
-    fill_domain_anchors(xml_tree, anchors)
-
-    repo_context = build_context_snippets(index, budget=max_total_bytes)
-    xml_bytes = etree.tostring(xml_tree, encoding="utf-8", xml_declaration=True, pretty_print=True)
-    xml_for_llm = xml_bytes.decode("utf-8", errors="replace")
-    prompt = build_prompt(repo_context, xml_for_llm)
-
-    raw_output = call_llm_for_xml(model_name, prompt, llm_timeout_seconds)
-    try:
-        final_tree = etree.fromstring(raw_output.encode("utf-8", errors="replace"))
-        final_doc = etree.ElementTree(final_tree)
-    except Exception as exc:
-        if debug_output_path:
-            _save_debug_output(debug_output_path, raw_output)
-        raise DomainBuildError("LLM output is not valid XML.") from exc
-
-    ok, msg = validate_xml(final_doc, xsd_path)
-    xml_text = etree.tostring(final_doc, encoding="utf-8", xml_declaration=True, pretty_print=True).decode("utf-8")
-    if not ok:
-        if debug_output_path:
-            _save_debug_output(debug_output_path, raw_output)
-        raise DomainBuildError(f"LLM XML does not validate against XSD: {msg}")
-
-    return xml_text
-
-
-def run_cli(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate domain XML using repository context and LLM.")
-    parser.add_argument("repo", help="Path to the repository directory")
-    parser.add_argument("--config", default="config.default.json", help="Path to the JSON config file")
-    parser.add_argument("--output", default="", help="Override output path for the generated XML")
-    parser.add_argument("--model", default="", help="Override LLM model name")
-    parser.add_argument("--max-total-bytes", type=int, default=None, help="Total byte budget for repository context")
-    parser.add_argument("--max-file-bytes", type=int, default=None, help="Per-file byte limit when indexing")
-    args = parser.parse_args(argv)
-
-    repo_dir = Path(args.repo).resolve()
-    if not repo_dir.is_dir():
-        raise SystemExit(f"Repo dir not found: {repo_dir}")
-
-    config = load_config(args.config)
-    validate_config(config, generate="release")
-    domain_cfg = config["domain"]
-
-    template_path = resolve_repo_path(repo_dir, domain_cfg["template_path"])
-    xsd_path = resolve_repo_path(repo_dir, domain_cfg["xsd_path"])
-    output_path = resolve_repo_path(repo_dir, args.output or domain_cfg["output_path"])
-    model_name = args.model or domain_cfg["model"]
-    max_total_bytes = args.max_total_bytes or domain_cfg["max_total_bytes"]
-    max_file_bytes = args.max_file_bytes or domain_cfg["max_file_bytes"]
-    llm_timeout_seconds = config.get("llm_timeout_seconds")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        xml_text = generate_domain_xml(
-            repo_dir=repo_dir,
-            template_path=template_path,
-            xsd_path=xsd_path,
-            model_name=model_name,
-            max_total_bytes=max_total_bytes,
-            max_file_bytes=max_file_bytes,
-            llm_timeout_seconds=llm_timeout_seconds,
-            debug_output_path=output_path,
-        )
-    except DomainBuildError as exc:
-        print(f"[ERRO] {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:  # pragma: no cover - defensive catch
-        print(f"[ERRO] Unexpected error: {exc}", file=sys.stderr)
-        return 1
-
-    output_path.write_text(xml_text, encoding="utf-8")
-    print(f"[OK] Domain XML generated at: {output_path}")
-    return 0
-
-
-if __name__ == "__main__":  # pragma: no cover - CLI entry
-    raise SystemExit(run_cli())

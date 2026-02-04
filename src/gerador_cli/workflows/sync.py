@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict
 
-from ..adapters.filesystem import ensure_dir, get_repository_name, resolve_cli_or_absolute, resolve_repo_path
+from ..adapters.filesystem import get_repository_name, resolve_cli_or_absolute, resolve_repo_path
 from ..adapters.domain_profile import generate_domain_profile, save_domain_profile, load_domain_profile
 from ..adapters.prompt_debug import set_prompt_output_dir
 from ..config import load_config, validate_config
@@ -28,7 +28,13 @@ from ..domain.services.composition import (
     render_template,
 )
 from ..domain.services.data_collection import get_commits
-from ..domain.services.export import export_commits, export_convention_report, export_text_document
+from ..domain.services.export import (
+    create_output_structure,
+    export_commits,
+    export_convention_report,
+    export_pr,
+    export_release,
+)
 
 
 def _classify_commits(commits, config):
@@ -74,21 +80,17 @@ def _warn_on_non_conventional(commits) -> None:
 
 
 def _prepare_domain_profile(
-    repo_dir: Path, output_dir: Path, domain_cfg, config: Dict
+    repo_dir: Path, utils_dir: Path, domain_cfg, config: Dict
 ) -> ProjectProfile:
     """Prepare domain profile, loading from cache or generating new one."""
     # Get repository name to include in domain filename
     repo_name = get_repository_name(repo_dir)
 
     # Build domain filename with repository name (now JSON instead of XML)
-    base_output_path = Path(domain_cfg.get("output_path", "domain_profile.json"))
-    if base_output_path.suffix in {".xml", ".json"}:
-        domain_filename = f"{base_output_path.stem}_{repo_name}.json"
-    else:
-        domain_filename = f"{base_output_path}_{repo_name}.json"
+    domain_filename = f"domain_profile_{repo_name}.json"
 
-    # Save domain file in output directory
-    domain_out = output_dir / domain_filename
+    # Save domain file in utils directory
+    domain_out = utils_dir / domain_filename
 
     # Try to load existing profile
     if domain_out.exists():
@@ -125,13 +127,14 @@ def run_workflow(args) -> int:
     validate_config(config, generate=args.generate)
     llm_model = args.model or config["llm_model"]
 
-    output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
+    base_output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
+    repo_name = get_repository_name(repo_dir)
 
-    # Ensure output directory exists before starting threads that may write to it
-    ensure_dir(output_dir)
+    # Create the output directory structure: {repo_name}/utils, releases, prs
+    output_paths = create_output_structure(base_output_dir, repo_name)
 
-    # Configure prompt debug output directory
-    set_prompt_output_dir(output_dir)
+    # Configure prompt debug output directory (uses utils dir)
+    set_prompt_output_dir(output_paths['utils'])
 
     domain_profile = None
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -139,7 +142,7 @@ def run_workflow(args) -> int:
         domain_future = None
         if args.generate in {"release", "both"} and not args.refresh_domain:
             domain_future = executor.submit(
-                _prepare_domain_profile, repo_dir, output_dir, config["domain"], config
+                _prepare_domain_profile, repo_dir, output_paths['utils'], config["domain"], config
             )
 
         commits = commits_future.result()
@@ -153,12 +156,12 @@ def run_workflow(args) -> int:
     _warn_on_non_conventional(commits)
 
     convention_report = build_convention_report(commits)
-    export_convention_report(convention_report, output_dir)
+    export_convention_report(convention_report, output_paths['utils'])
 
     _score_commits(commits, config)
     grouped_commits = group_commits_by_type(commits, config)
 
-    export_commits(commits, output_dir)
+    export_commits(commits, output_paths['utils'])
 
     # Generate summaries based on what output types we need
     pr_summaries = {}
@@ -191,7 +194,8 @@ def run_workflow(args) -> int:
             }
         )
         pr_text = render_template(pr_template, pr_fields_dict)
-        export_text_document(pr_text, output_dir, "pr.md")
+        pr_title = pr_fields_dict.get("title", "untitled")
+        export_pr(pr_text, output_paths['prs'], pr_title)
 
     if args.generate in {"release", "both"}:
         # Generate Release-specific changes (user-facing functionality)
@@ -199,14 +203,9 @@ def run_workflow(args) -> int:
 
         domain_cfg = config["domain"]
         if domain_profile is None and not args.refresh_domain:
-            # Try to load existing domain profile
-            repo_name = get_repository_name(repo_dir)
-            base_output_path = Path(domain_cfg.get("output_path", "domain_profile.json"))
-            if base_output_path.suffix in {".xml", ".json"}:
-                domain_filename = f"{base_output_path.stem}_{repo_name}.json"
-            else:
-                domain_filename = f"{base_output_path}_{repo_name}.json"
-            domain_out = output_dir / domain_filename
+            # Try to load existing domain profile from utils directory
+            domain_filename = f"domain_profile_{repo_name}.json"
+            domain_out = output_paths['utils'] / domain_filename
             if domain_out.exists():
                 try:
                     domain_profile = load_domain_profile(domain_out)
@@ -232,6 +231,6 @@ def run_workflow(args) -> int:
             }
         )
         release_text = render_template(release_template, release_fields_dict)
-        export_text_document(release_text, output_dir, "release.md")
+        export_release(release_text, output_paths['releases'], version_label)
 
     return 0

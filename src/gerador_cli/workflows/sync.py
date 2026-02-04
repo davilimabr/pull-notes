@@ -9,6 +9,7 @@ from typing import Dict
 
 from ..adapters.filesystem import ensure_dir, get_repository_name, resolve_cli_or_absolute, resolve_repo_path
 from ..adapters.domain_profile import generate_domain_profile, save_domain_profile, load_domain_profile
+from ..adapters.prompt_debug import set_prompt_output_dir
 from ..config import load_config, validate_config
 from ..domain.errors import DomainBuildError
 from ..domain.schemas import ProjectProfile
@@ -128,6 +129,9 @@ def run_workflow(args) -> int:
 
     # Ensure output directory exists before starting threads that may write to it
     ensure_dir(output_dir)
+
+    # Configure prompt debug output directory
+    set_prompt_output_dir(output_dir)
 
     domain_profile = None
     with ThreadPoolExecutor(max_workers=2) as executor:

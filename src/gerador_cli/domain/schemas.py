@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -115,6 +115,26 @@ class DomainAnchors(BaseModel):
     """Observable terms and artifacts from the repository."""
     keywords: List[Keyword] = Field(..., min_length=2, description="At least 2 domain keywords")
     artifacts: List[Artifact] = Field(default_factory=list, description="Detected artifacts")
+
+
+class DiffKeyword(BaseModel):
+    """A keyword extracted from diff changes."""
+    text: str = Field(..., min_length=1, description="The keyword text")
+    change_type: Literal["added", "removed"] = Field(..., description="Whether keyword was added or removed")
+
+
+class DiffArtifact(BaseModel):
+    """An artifact detected in diff changes."""
+    kind: ArtifactKind = Field(..., description="Type of artifact")
+    name: str = Field(..., min_length=1, description="Name of the artifact")
+    change_type: Literal["added", "removed"] = Field(..., description="Whether artifact was added or removed")
+
+
+class DiffAnchors(BaseModel):
+    """Semantic anchors extracted from a commit diff."""
+    files_changed: List[str] = Field(default_factory=list, description="List of files modified")
+    keywords: List[DiffKeyword] = Field(default_factory=list, description="Keywords from diff content")
+    artifacts: List[DiffArtifact] = Field(default_factory=list, description="Artifacts detected in diff")
 
 
 class DomainLabel(BaseModel):

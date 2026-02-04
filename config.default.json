@@ -24,7 +24,7 @@
     { "name": "high", "min": 6.0 },
     { "name": "critical", "min": 9.0 }
   ],
-  "diff": { "max_bytes": 1000, "max_lines": 50 },
+  "diff": { "max_anchors_keywords": 10, "max_anchors_artifacts": 10 },
   "domain": {
     "output_path": "domain_profile.json",
     "model": "deepseek-r1:8b",

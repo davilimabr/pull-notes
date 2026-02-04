@@ -68,8 +68,8 @@ def validate_config(config: Dict, *, generate: str) -> None:
         require(("domain", "max_total_bytes"))
         require(("domain", "max_file_bytes"))
 
-    require(("diff", "max_bytes"))
-    require(("diff", "max_lines"))
+    require(("diff", "max_anchors_keywords"))
+    require(("diff", "max_anchors_artifacts"))
     require(("language",))
     require(("llm_model",))
 

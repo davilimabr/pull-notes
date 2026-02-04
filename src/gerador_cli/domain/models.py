@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from gerador_cli.domain.schemas import DiffAnchors
 
 
 COMMIT_MARKER = "__COMMIT__"
@@ -22,6 +25,7 @@ class Commit:
     additions: int = 0
     deletions: int = 0
     diff: str = ""
+    diff_anchors: Optional["DiffAnchors"] = None
     change_type: str = ""
     is_conventional: bool = True
     importance_score: float = 0.0

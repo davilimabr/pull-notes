@@ -15,7 +15,7 @@ from .composition import (
     build_version_label,
     render_template,
 )
-from .data_collection import get_commits, parse_git_log, trim_diff
+from .data_collection import get_commits, parse_git_log, extract_diff_anchors
 from .export import export_commits, export_convention_report, export_text_document
 
 __all__ = [
@@ -35,5 +35,5 @@ __all__ = [
     "render_template",
     "summarize_commit",
     "summarize_commit_group",
-    "trim_diff",
+    "extract_diff_anchors",
 ]

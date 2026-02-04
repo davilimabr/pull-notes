@@ -6,9 +6,9 @@ import re
 import sys
 from typing import Dict, List, Tuple
 
+from ...adapters.prompt_debug import save_prompt
 from ...prompts import load_prompt
 from ..models import Commit
-from .data_collection import trim_diff
 
 _JS_REGEX_RE = re.compile(r"^/(.+)/([a-zA-Z]*)$")
 
@@ -101,43 +101,109 @@ def build_language_hint(language: str) -> str:
     return f"Write the response in {language}."
 
 
+def _format_diff_anchors_for_prompt(commit: Commit) -> str:
+    """Format diff anchors as text for prompt insertion."""
+    if not commit.diff_anchors:
+        return "(diff analysis unavailable)"
+
+    anchors = commit.diff_anchors
+    sections = []
+
+    # Files changed
+    if anchors.files_changed:
+        files_section = "\n".join(f"- {f}" for f in anchors.files_changed[:15])
+        sections.append(f"Files Changed:\n{files_section}")
+
+    # Keywords
+    added_kws = [k.text for k in anchors.keywords if k.change_type == "added"][:5]
+    removed_kws = [k.text for k in anchors.keywords if k.change_type == "removed"][:5]
+    if added_kws or removed_kws:
+        kw_parts = []
+        if added_kws:
+            kw_parts.append(f"Added: {', '.join(added_kws)}")
+        if removed_kws:
+            kw_parts.append(f"Removed: {', '.join(removed_kws)}")
+        sections.append(f"Keywords:\n" + "\n".join(kw_parts))
+
+    # Artifacts
+    if anchors.artifacts:
+        artifacts_list = [
+            f"[{a.change_type}] {a.kind}: {a.name}"
+            for a in anchors.artifacts[:5]
+        ]
+        artifacts_section = "\n".join(f"- {a}" for a in artifacts_list)
+        sections.append(f"Artifacts:\n{artifacts_section}")
+
+    return "\n\n".join(sections) if sections else "(no changes detected)"
+
+
 def summarize_commit(commit: Commit, config: Dict, model: str) -> str:
     """Summarize commit using LLM."""
     from ...adapters.http import call_ollama
 
-    diff_cfg = config["diff"]
-    diff = trim_diff(commit.diff, diff_cfg["max_lines"], diff_cfg["max_bytes"])
+    change_summary = _format_diff_anchors_for_prompt(commit)
     prompt = load_prompt(
         "commit_summary",
         {
             "language_hint": build_language_hint(config["language"]),
             "commit_message": f"{commit.subject}\n{commit.body}",
             "files": "\n".join(f"- {f}" for f in commit.files[:30]),
-            "diff": diff,
+            "change_summary": change_summary,
         },
     )
     return call_ollama(model, prompt, config.get("llm_timeout_seconds"))
 
 
 def _build_commit_blocks(commits: List[Commit], diff_cfg: Dict) -> str:
+    """Build text blocks for each commit using semantic anchors."""
     blocks: List[str] = []
     for commit in commits:
         files = "\n".join(f"- {f}" for f in commit.files[:30]) or "- (no files listed)"
-        trimmed_diff = trim_diff(commit.diff, diff_cfg["max_lines"], diff_cfg["max_bytes"])
-        diff_text = trimmed_diff if trimmed_diff.strip() else "(diff vazio ou indisponivel)"
         body_text = commit.body.strip() or "(sem corpo)"
+
+        # Build anchors section
+        if commit.diff_anchors:
+            anchors = commit.diff_anchors
+
+            # Files changed
+            files_section = "\n".join(f"- {f}" for f in anchors.files_changed[:15]) or "- (no files)"
+
+            # Keywords
+            added_kws = [k.text for k in anchors.keywords if k.change_type == "added"][:5]
+            removed_kws = [k.text for k in anchors.keywords if k.change_type == "removed"][:5]
+            keywords_section = ""
+            if added_kws:
+                keywords_section += f"Added: {', '.join(added_kws)}\n"
+            if removed_kws:
+                keywords_section += f"Removed: {', '.join(removed_kws)}"
+            keywords_section = keywords_section.strip() or "(no keywords)"
+
+            # Artifacts
+            artifacts_list = [
+                f"[{a.change_type}] {a.kind}: {a.name}"
+                for a in anchors.artifacts[:5]
+            ]
+            artifacts_section = "\n".join(f"- {a}" for a in artifacts_list) or "- (no artifacts)"
+
+            change_summary = "\n".join([
+                "Files Changed:",
+                files_section,
+                "Keywords:",
+                keywords_section,
+                "Artifacts:",
+                artifacts_section,
+            ])
+        else:
+            change_summary = "(diff analysis unavailable)"
+
         blocks.append(
-            "\n".join(
-                [
-                    f"Commit: {commit.short_sha}",
-                    f"Subject: {commit.subject}",
-                    f"Body: {body_text}",
-                    "Files:",
-                    files,
-                    "Diff (truncated):",
-                    diff_text,
-                ]
-            )
+            "\n".join([
+                f"Commit: {commit.short_sha}",
+                f"Subject: {commit.subject}",
+                f"Body: {body_text}",
+                "Change Summary:",
+                change_summary,
+            ])
         )
     return "\n\n".join(blocks)
 
@@ -184,8 +250,12 @@ def summarize_commit_group(
 
     result = client.invoke_structured(prompt, CommitGroupSummary)
 
+    # Save prompt for debugging
+    response_text = "\n".join(f"- {point}" for point in result.summary_points)
+    save_prompt(prompt, f"commit_group_{commit_type}_{output_type}", response_text)
+
     # Format as bullet points for template compatibility
-    return "\n".join(f"- {point}" for point in result.summary_points)
+    return response_text
 
 
 def summarize_all_groups(

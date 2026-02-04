@@ -33,7 +33,8 @@ class Commit:
     files: List[str] = field(default_factory=list)  # Arquivos modificados
     additions: int = 0          # Total de linhas adicionadas
     deletions: int = 0          # Total de linhas removidas
-    diff: str = ""              # Diff truncado do commit
+    diff: str = ""              # Diff bruto do commit
+    diff_anchors: Optional[DiffAnchors] = None  # Ancoras semanticas extraidas
 
     # === Classificacao ===
     change_type: str = ""       # Tipo: feat, fix, docs, refactor, etc.
@@ -74,6 +75,7 @@ class Commit:
 |   additions: int        150                                      |
 |   deletions: int        30                                       |
 |   diff: str             "+def login(): ..."                      |
+|   diff_anchors: DiffAnchors  (ancoras semanticas extraidas)      |
 +------------------------------------------------------------------+
 | CLASSIFICACAO                                                     |
 |   change_type: str      "feat"                                   |
@@ -98,6 +100,7 @@ class Commit:
 2. ENRIQUECIMENTO (fetch_commit_details)
    +-- body (git show -s --format=%B)
    +-- diff (git show --unified=3)
+   +-- diff_anchors (extract_diff_anchors)
 
 3. CLASSIFICACAO (classify_commit)
    +-- change_type
@@ -108,8 +111,90 @@ class Commit:
    +-- importance_band
 
 5. SUMARIZACAO (summarize_commit_group)
-   +-- summary (via LLM)
+   +-- summary (via LLM, usando diff_anchors)
 ```
+
+---
+
+## DiffAnchors (Ancoras Semanticas de Diff)
+
+### Definicao
+
+**Arquivo:** `domain/schemas.py`
+
+```python
+from pydantic import BaseModel, Field
+from typing import List, Literal
+
+class DiffKeyword(BaseModel):
+    """A keyword extracted from diff changes."""
+    text: str = Field(..., min_length=1, description="The keyword text")
+    change_type: Literal["added", "removed"] = Field(..., description="Whether keyword was added or removed")
+
+
+class DiffArtifact(BaseModel):
+    """An artifact detected in diff changes."""
+    kind: ArtifactKind = Field(..., description="Type of artifact")
+    name: str = Field(..., min_length=1, description="Name of the artifact")
+    change_type: Literal["added", "removed"] = Field(..., description="Whether artifact was added or removed")
+
+
+class DiffAnchors(BaseModel):
+    """Semantic anchors extracted from a commit diff."""
+    files_changed: List[str] = Field(default_factory=list, description="List of files modified")
+    keywords: List[DiffKeyword] = Field(default_factory=list, description="Keywords from diff content")
+    artifacts: List[DiffArtifact] = Field(default_factory=list, description="Artifacts detected in diff")
+```
+
+### Diagrama de Campos
+
+```
++------------------------------------------------------------------+
+|                         DiffAnchors                               |
++------------------------------------------------------------------+
+| files_changed: List[str]                                          |
+|   ["src/auth.py", "src/models/user.py"]                          |
++------------------------------------------------------------------+
+| keywords: List[DiffKeyword]                                       |
+|   [                                                               |
+|     {"text": "login", "change_type": "added"},                   |
+|     {"text": "session", "change_type": "added"},                 |
+|     {"text": "old_auth", "change_type": "removed"}               |
+|   ]                                                               |
++------------------------------------------------------------------+
+| artifacts: List[DiffArtifact]                                     |
+|   [                                                               |
+|     {"kind": "api_endpoint", "name": "POST /login", "change_type": "added"},
+|     {"kind": "service", "name": "AuthService", "change_type": "added"}
+|   ]                                                               |
++------------------------------------------------------------------+
+```
+
+### Exemplo JSON
+
+```json
+{
+  "files_changed": ["src/auth.py", "src/models/user.py"],
+  "keywords": [
+    {"text": "login", "change_type": "added"},
+    {"text": "jwt", "change_type": "added"},
+    {"text": "session", "change_type": "removed"}
+  ],
+  "artifacts": [
+    {"kind": "api_endpoint", "name": "POST /api/login", "change_type": "added"},
+    {"kind": "service", "name": "AuthService", "change_type": "added"}
+  ]
+}
+```
+
+### Vantagens sobre Diff Truncado
+
+| Aspecto | Diff Truncado (antigo) | DiffAnchors (novo) |
+|---------|------------------------|---------------------|
+| Tamanho | 1000 bytes max | ~200-500 bytes |
+| Contexto | Cortado arbitrariamente | Semanticamente relevante |
+| Informacao | Codigo bruto | Keywords + Artifacts |
+| LLM | Pode alucinar | Mais preciso |
 
 ---
 
@@ -188,7 +273,7 @@ config = {
 
     # Outros
     "language": "pt-BR",
-    "diff": {"max_bytes": 1000, "max_lines": 50},
+    "diff": {"max_anchors_keywords": 10, "max_anchors_artifacts": 10},
     "release": {"version_template": "{revision_range}", "date_format": "%Y-%m-%d"}
 }
 ```
@@ -385,6 +470,16 @@ convention_report = {
     "additions": 150,
     "deletions": 30,
     "diff": "+def login():\n+    ...",
+    "diff_anchors": {
+      "files_changed": ["src/auth.py", "src/models/user.py"],
+      "keywords": [
+        {"text": "login", "change_type": "added"},
+        {"text": "jwt", "change_type": "added"}
+      ],
+      "artifacts": [
+        {"kind": "api_endpoint", "name": "POST /api/login", "change_type": "added"}
+      ]
+    },
     "change_type": "feat",
     "is_conventional": true,
     "importance_score": 7.5,

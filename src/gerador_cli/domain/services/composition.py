@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from typing import Dict, List, Tuple, TYPE_CHECKING
 
+from ...adapters.prompt_debug import save_prompt
 from ...prompts import load_prompt
 from ..models import Commit
 from .aggregation import build_language_hint, group_commits_by_type
@@ -79,7 +80,9 @@ def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str)
         },
     )
 
-    return client.invoke_structured(prompt, PRFields)
+    result = client.invoke_structured(prompt, PRFields)
+    save_prompt(prompt, "pr_fields", result.model_dump_json(indent=2))
+    return result
 
 
 def build_release_fields(
@@ -118,7 +121,9 @@ def build_release_fields(
         },
     )
 
-    return client.invoke_structured(prompt, ReleaseFields)
+    result = client.invoke_structured(prompt, ReleaseFields)
+    save_prompt(prompt, "release_fields", result.model_dump_json(indent=2))
+    return result
 
 
 def render_template(template_text: str, values: Dict[str, str]) -> str:

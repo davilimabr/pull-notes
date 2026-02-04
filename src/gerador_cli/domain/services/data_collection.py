@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from ...adapters.subprocess import run_git
+from ...adapters.domain_definition import top_keywords, API_METHOD_RE, EVENT_NAME_RE, SERVICE_NAME_RE
 from ..models import COMMIT_MARKER, GIT_FORMAT, Commit
+from ..schemas import DiffAnchors, DiffKeyword, DiffArtifact
 
 
 def _prefix_origin_range(revision_range: str) -> str:
@@ -120,16 +122,85 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
             commit, body, diff = future.result()
             commit.body = body
             commit.diff = diff
+            commit.diff_anchors = extract_diff_anchors(diff)
 
     return commits
 
 
-def trim_diff(diff_text: str, max_lines: int, max_bytes: int) -> str:
-    """Trim diff content by lines and bytes."""
-    lines = diff_text.splitlines()
-    if len(lines) > max_lines:
-        lines = lines[:max_lines]
-    trimmed = "\n".join(lines)
-    if len(trimmed.encode("utf-8")) > max_bytes:
-        trimmed = trimmed.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore")
-    return trimmed
+def extract_diff_anchors(
+    diff_text: str,
+    max_keywords: int = 10,
+    max_artifacts: int = 10
+) -> DiffAnchors:
+    """
+    Extract semantic anchors from a git diff.
+
+    Separates added/removed lines and extracts:
+    - Keywords from content (excluding stopwords)
+    - Artifacts matching known patterns (API endpoints, events, services, etc.)
+    """
+    if not diff_text.strip():
+        return DiffAnchors()
+
+    added_lines: List[str] = []
+    removed_lines: List[str] = []
+    files_changed: List[str] = []
+
+    for line in diff_text.splitlines():
+        # Extract file names from diff headers
+        if line.startswith("diff --git"):
+            # Format: diff --git a/path/file b/path/file
+            parts = line.split()
+            if len(parts) >= 4:
+                file_path = parts[3].lstrip("b/")
+                if file_path not in files_changed:
+                    files_changed.append(file_path)
+        elif line.startswith("+") and not line.startswith("+++"):
+            added_lines.append(line[1:])  # Remove + prefix
+        elif line.startswith("-") and not line.startswith("---"):
+            removed_lines.append(line[1:])  # Remove - prefix
+
+    # Extract keywords
+    keywords: List[DiffKeyword] = []
+    added_text = "\n".join(added_lines)
+    removed_text = "\n".join(removed_lines)
+
+    for kw in top_keywords(added_text, top_n=max_keywords):
+        keywords.append(DiffKeyword(text=kw, change_type="added"))
+    for kw in top_keywords(removed_text, top_n=max_keywords):
+        if not any(k.text == kw for k in keywords):  # Avoid duplicates
+            keywords.append(DiffKeyword(text=kw, change_type="removed"))
+
+    # Extract artifacts using existing patterns
+    artifacts: List[DiffArtifact] = []
+    seen_artifacts: set = set()
+
+    def extract_artifacts_from_text(text: str, change_type: str) -> None:
+        for match in API_METHOD_RE.finditer(text):
+            key = ("api_endpoint", f"{match.group(1)} {match.group(2)}")
+            if key not in seen_artifacts:
+                seen_artifacts.add(key)
+                artifacts.append(DiffArtifact(
+                    kind="api_endpoint",
+                    name=f"{match.group(1)} {match.group(2)}",
+                    change_type=change_type
+                ))
+        for match in EVENT_NAME_RE.finditer(text):
+            key = ("event", match.group(1))
+            if key not in seen_artifacts:
+                seen_artifacts.add(key)
+                artifacts.append(DiffArtifact(kind="event", name=match.group(1), change_type=change_type))
+        for match in SERVICE_NAME_RE.finditer(text):
+            key = ("service", match.group(1))
+            if key not in seen_artifacts:
+                seen_artifacts.add(key)
+                artifacts.append(DiffArtifact(kind="service", name=match.group(1), change_type=change_type))
+
+    extract_artifacts_from_text(added_text, "added")
+    extract_artifacts_from_text(removed_text, "removed")
+
+    return DiffAnchors(
+        files_changed=files_changed[:30],  # Limit files
+        keywords=keywords[:max_keywords * 2],  # Limit total keywords
+        artifacts=artifacts[:max_artifacts]
+    )

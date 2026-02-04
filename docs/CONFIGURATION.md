@@ -87,8 +87,8 @@ O arquivo de configuracao e um JSON que define comportamentos da ferramenta. Use
   },
 
   "diff": {
-    "max_bytes": 1000,
-    "max_lines": 50
+    "max_anchors_keywords": 10,
+    "max_anchors_artifacts": 10
   },
 
   "release": {
@@ -283,14 +283,18 @@ Paths dos templates markdown de saida.
 
 ### diff
 
-Limites para truncamento de diffs nos commits.
+Configuracao para extracao de ancoras semanticas dos diffs.
 
 | Campo | Tipo | Padrao | Descricao |
 |-------|------|--------|-----------|
-| `max_bytes` | int | 1000 | Maximo de bytes por diff |
-| `max_lines` | int | 50 | Maximo de linhas por diff |
+| `max_anchors_keywords` | int | 10 | Maximo de keywords extraidas por diff |
+| `max_anchors_artifacts` | int | 10 | Maximo de artifacts detectados por diff |
 
-**Nota:** O que for atingido primeiro (bytes ou linhas) causa truncamento.
+**Nota:** Em vez de truncar diffs brutos, a ferramenta agora extrai ancoras semanticas (keywords e artifacts) que sao mais informativas para o LLM e reduzem significativamente o tamanho dos prompts.
+
+**Ancoras Extraidas:**
+- **Keywords:** Palavras-chave das linhas adicionadas/removidas (excluindo stopwords)
+- **Artifacts:** Padroes detectados como endpoints API, eventos e servicos
 
 ---
 

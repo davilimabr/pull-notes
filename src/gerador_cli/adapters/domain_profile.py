@@ -16,6 +16,7 @@ from ..domain.schemas import (
 )
 from ..domain.errors import DomainBuildError
 from .llm_structured import StructuredLLMClient
+from .prompt_debug import save_prompt
 from ..prompts import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ def generate_domain_profile(
         profile = client.invoke_structured(prompt, ProjectProfile)
         # Ensure anchors are preserved (LLM might modify them)
         profile.domain.domain_anchors = anchors_pydantic
+        save_prompt(prompt, "domain_profile", profile.model_dump_json(indent=2))
         return profile
     except ValueError as e:
         raise DomainBuildError(f"Failed to generate domain profile: {e}") from e

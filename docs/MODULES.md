@@ -200,9 +200,9 @@ def build_domain_profile(
 
 | Funcao | Descricao |
 |--------|-----------|
-| `get_commits(repo_dir, range, since, until, config)` | Funcao principal de coleta |
+| `get_commits(repo_dir, range, since, until)` | Funcao principal de coleta |
 | `parse_git_log(output)` | Parseia saida do git log |
-| `trim_diff(diff, max_lines, max_bytes)` | Trunca diff para limites |
+| `extract_diff_anchors(diff_text, max_keywords, max_artifacts)` | Extrai ancoras semanticas do diff |
 | `_prefix_origin_range(range)` | Fallback para origin/ refs |
 
 **Fluxo:**
@@ -210,9 +210,14 @@ def build_domain_profile(
 1. Executar git log com formato customizado
 2. Parsear saida em List[Commit]
 3. Fetch paralelo de body e diff (ThreadPoolExecutor)
-4. Truncar diffs conforme configuracao
-5. Retornar commits completos
+4. Extrair ancoras semanticas dos diffs (extract_diff_anchors)
+5. Retornar commits completos com diff_anchors
 ```
+
+**Ancoras Extraidas (DiffAnchors):**
+- `files_changed`: Lista de arquivos modificados
+- `keywords`: Keywords extraidas das linhas +/- (com tipo added/removed)
+- `artifacts`: Padroes detectados (API endpoints, eventos, servicos)
 
 ### `domain/services/aggregation.py`
 
@@ -382,6 +387,35 @@ def call_ollama(
 | `ensure_dir(path)` | Cria diretorio se nao existir |
 | `repository_name(repo_dir)` | Extrai nome do repositorio |
 | `sanitize_filename(name)` | Remove caracteres invalidos |
+
+### `adapters/prompt_debug.py`
+
+**Caminho:** `src/gerador_cli/adapters/prompt_debug.py`
+
+**Responsabilidade:** Salvamento de prompts LLM para debug e analise
+
+**Funcoes Principais:**
+
+| Funcao | Descricao |
+|--------|-----------|
+| `set_prompt_output_dir(output_dir)` | Configura diretorio de saida para prompts |
+| `save_prompt(prompt, name, response)` | Salva prompt e resposta em arquivo |
+
+**Arquivos Gerados:**
+- Salvos em `<output_dir>/prompts/`
+- Formato: `{counter}_{timestamp}_{name}.txt`
+- Conteudo: Prompt completo + Resposta do LLM
+
+**Uso:**
+```python
+from gerador_cli.adapters.prompt_debug import set_prompt_output_dir, save_prompt
+
+# No inicio do workflow
+set_prompt_output_dir(output_dir)
+
+# Apos cada chamada LLM
+save_prompt(prompt, "commit_group_feat_pr", response_text)
+```
 
 ### `adapters/domain_definition.py`
 

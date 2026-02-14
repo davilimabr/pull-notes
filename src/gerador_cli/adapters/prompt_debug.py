@@ -35,7 +35,7 @@ def save_prompt(prompt: str, name: str, response: Optional[str] = None) -> Optio
         return None
 
     prompts_dir = _output_dir / "prompts"
-    prompts_dir.mkdir(exist_ok=True)
+    prompts_dir.mkdir(parents=True, exist_ok=True)
 
     _prompt_counter += 1
     timestamp = datetime.now().strftime("%H%M%S")

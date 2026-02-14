@@ -1,0 +1,35 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  gerador-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ${REPO_PATH:-.}:/repo:ro
+      - ${CONFIG_PATH:-./config.default.json}:/app/config.json:ro
+      - ./output:/app/output
+    entrypoint: ["gerador-cli", "/repo", "--config", "/app/config.json", "--output-dir", "/app/output"]
+    command: ["--generate", "both"]
+    profiles:
+      - run
+
+volumes:
+  ollama_data:

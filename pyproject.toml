@@ -24,7 +24,7 @@ where = ["src"]
 py-modules = ["gerador", "domain_step", "preencher_dominio"]
 
 [tool.setuptools.package-data]
-"gerador_cli" = ["prompts/*.txt"]
+"gerador_cli" = ["prompts/*.txt", "templates/*.md"]
 
 [project.scripts]
 gerador-cli = "gerador_cli.__main__:main"

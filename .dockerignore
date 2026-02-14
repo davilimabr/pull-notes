@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.py[cod]
+*.pyo
+*.egg-info
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Testing/tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+tests/
+
+# Documentation
+docs/
+README.md
+thoughts/
+
+# Project outputs
+out/
+.gerador/
+dominio.preenchido*.xml
+dominio_*.xml
+*.log
+
+# Claude
+.claude/

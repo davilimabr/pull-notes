@@ -20,9 +20,9 @@ Este documento descreve cada modulo do projeto, suas funcoes e responsabilidades
 
 ### `__main__.py`
 
-**Caminho:** `src/gerador_cli/__main__.py`
+**Caminho:** `src/pullnotes/__main__.py`
 
-**Responsabilidade:** Entry point para execucao via `python -m gerador_cli`
+**Responsabilidade:** Entry point para execucao via `python -m pullnotes`
 
 ```python
 def main():
@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
 ### `cli.py`
 
-**Caminho:** `src/gerador_cli/cli.py`
+**Caminho:** `src/pullnotes/cli.py`
 
 **Responsabilidade:** Interface de linha de comando e parsing de argumentos
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
 ### `config.py`
 
-**Caminho:** `src/gerador_cli/config.py`
+**Caminho:** `src/pullnotes/config.py`
 
 **Responsabilidade:** Carregamento e validacao de configuracao JSON
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
 ### `domain/models.py`
 
-**Caminho:** `src/gerador_cli/domain/models.py`
+**Caminho:** `src/pullnotes/domain/models.py`
 
 **Responsabilidade:** Definicao da entidade central `Commit`
 
@@ -151,7 +151,7 @@ GIT_FORMAT = f"{COMMIT_MARKER}%n%H%x1f%an%x1f%ae%x1f%ad%x1f%s"
 
 ### `domain/errors.py`
 
-**Caminho:** `src/gerador_cli/domain/errors.py`
+**Caminho:** `src/pullnotes/domain/errors.py`
 
 **Responsabilidade:** Excecoes de dominio
 
@@ -163,7 +163,7 @@ class DomainBuildError(Exception):
 
 ### `domain/domain_profile.py`
 
-**Caminho:** `src/gerador_cli/domain/domain_profile.py`
+**Caminho:** `src/pullnotes/domain/domain_profile.py`
 
 **Responsabilidade:** Orquestracao da geracao do perfil de dominio
 
@@ -192,7 +192,7 @@ def build_domain_profile(
 
 ### `domain/services/data_collection.py`
 
-**Caminho:** `src/gerador_cli/domain/services/data_collection.py`
+**Caminho:** `src/pullnotes/domain/services/data_collection.py`
 
 **Responsabilidade:** Coleta de commits do repositorio Git
 
@@ -221,7 +221,7 @@ def build_domain_profile(
 
 ### `domain/services/aggregation.py`
 
-**Caminho:** `src/gerador_cli/domain/services/aggregation.py`
+**Caminho:** `src/pullnotes/domain/services/aggregation.py`
 
 **Responsabilidade:** Classificacao, scoring e sumarizacao de commits
 
@@ -251,7 +251,7 @@ score = (additions + deletions) * weight_lines
 
 ### `domain/services/composition.py`
 
-**Caminho:** `src/gerador_cli/domain/services/composition.py`
+**Caminho:** `src/pullnotes/domain/services/composition.py`
 
 **Responsabilidade:** Composicao de templates e geracao de campos via LLM
 
@@ -289,7 +289,7 @@ score = (additions + deletions) * weight_lines
 
 ### `domain/services/export.py`
 
-**Caminho:** `src/gerador_cli/domain/services/export.py`
+**Caminho:** `src/pullnotes/domain/services/export.py`
 
 **Responsabilidade:** Exportacao de artefatos gerados
 
@@ -313,7 +313,7 @@ score = (additions + deletions) * weight_lines
 
 ### `adapters/subprocess.py`
 
-**Caminho:** `src/gerador_cli/adapters/subprocess.py`
+**Caminho:** `src/pullnotes/adapters/subprocess.py`
 
 **Responsabilidade:** Wrapper para comandos Git
 
@@ -344,7 +344,7 @@ def run_git(repo_dir: Path, args: List[str]) -> str:
 
 ### `adapters/http.py`
 
-**Caminho:** `src/gerador_cli/adapters/http.py`
+**Caminho:** `src/pullnotes/adapters/http.py`
 
 **Responsabilidade:** Cliente para Ollama/LLM
 
@@ -375,7 +375,7 @@ def call_ollama(
 
 ### `adapters/filesystem.py`
 
-**Caminho:** `src/gerador_cli/adapters/filesystem.py`
+**Caminho:** `src/pullnotes/adapters/filesystem.py`
 
 **Responsabilidade:** Operacoes de I/O e resolucao de paths
 
@@ -390,7 +390,7 @@ def call_ollama(
 
 ### `adapters/prompt_debug.py`
 
-**Caminho:** `src/gerador_cli/adapters/prompt_debug.py`
+**Caminho:** `src/pullnotes/adapters/prompt_debug.py`
 
 **Responsabilidade:** Salvamento de prompts LLM para debug e analise
 
@@ -408,7 +408,7 @@ def call_ollama(
 
 **Uso:**
 ```python
-from gerador_cli.adapters.prompt_debug import set_prompt_output_dir, save_prompt
+from pullnotes.adapters.prompt_debug import set_prompt_output_dir, save_prompt
 
 # No inicio do workflow
 set_prompt_output_dir(output_dir)
@@ -419,7 +419,7 @@ save_prompt(prompt, "commit_group_feat_pr", response_text)
 
 ### `adapters/domain_definition.py`
 
-**Caminho:** `src/gerador_cli/adapters/domain_definition.py`
+**Caminho:** `src/pullnotes/adapters/domain_definition.py`
 
 **Responsabilidade:** Extracao de contexto do repositorio e geracao de XML de dominio
 
@@ -449,7 +449,7 @@ save_prompt(prompt, "commit_group_feat_pr", response_text)
 
 ### `workflows/sync.py`
 
-**Caminho:** `src/gerador_cli/workflows/sync.py`
+**Caminho:** `src/pullnotes/workflows/sync.py`
 
 **Responsabilidade:** Orquestracao principal do workflow
 
@@ -491,7 +491,7 @@ def run_workflow(args: Namespace) -> int:
 
 ### `prompts/__init__.py`
 
-**Caminho:** `src/gerador_cli/prompts/__init__.py`
+**Caminho:** `src/pullnotes/prompts/__init__.py`
 
 **Responsabilidade:** Carregamento e renderizacao de templates de prompt
 

@@ -277,7 +277,7 @@ Paths dos templates markdown de saida.
 | `pr` | string | Template para Pull Request |
 | `release` | string | Template para Release Notes |
 
-**Paths:** Relativos ao diretorio do pacote `gerador_cli`.
+**Paths:** Relativos ao diretorio do pacote `pullnotes`.
 
 ---
 

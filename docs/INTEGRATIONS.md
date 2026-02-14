@@ -6,7 +6,7 @@ Este documento descreve as integracoes da ferramenta com sistemas externos.
 
 ```
 +-------------------+     +-------------------+     +-------------------+
-|   Gerador CLI     |---->|       Git         |     |      Ollama       |
+|    PullNotes      |---->|       Git         |     |      Ollama       |
 |                   |     |  (subprocess)     |     |    (HTTP API)     |
 |   +----------+    |     +-------------------+     +-------------------+
 |   | Adapters |----+---->|      lxml         |
@@ -309,7 +309,7 @@ def validate_xml(xml_text: str, xsd_path: Path) -> bool:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <domainProfile>
-    <repositoryName>gerador-PR-relese-note</repositoryName>
+    <repositoryName>pull-notes</repositoryName>
 
     <domain>
         Ferramenta CLI para geracao automatica de
@@ -455,7 +455,7 @@ def iter_repo_files(repo_dir: Path, max_total_bytes: int):
 
 ```
                           +------------------+
-                          |   Gerador CLI    |
+                          |    PullNotes     |
                           +--------+---------+
                                    |
          +-------------------------+-------------------------+

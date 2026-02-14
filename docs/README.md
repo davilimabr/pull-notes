@@ -1,4 +1,4 @@
-# Gerador de PR e Release Notes - Documentacao
+# PullNotes - Documentacao
 
 Ferramenta CLI para geracao automatica de Pull Requests e Release Notes a partir de commits Git, utilizando LLM (Ollama) para sumarizacao inteligente.
 
@@ -17,7 +17,7 @@ Ferramenta CLI para geracao automatica de Pull Requests e Release Notes a partir
 
 ## Visao Geral
 
-O **Gerador de PR e Release Notes** e uma ferramenta que automatiza a criacao de documentacao de releases e pull requests atraves de:
+O **PullNotes** e uma ferramenta que automatiza a criacao de documentacao de releases e pull requests atraves de:
 
 1. **Coleta de Commits**: Extrai commits do repositorio Git com metadados completos
 2. **Classificacao**: Categoriza commits usando Conventional Commits (feat, fix, docs, etc.)
@@ -45,8 +45,8 @@ O **Gerador de PR e Release Notes** e uma ferramenta que automatiza a criacao de
 ## Estrutura de Diretorios
 
 ```
-gerador-PR-relese-note/
-+-- src/gerador_cli/
+pull-notes/
++-- src/pullnotes/
 |   +-- __main__.py          # Entry point
 |   +-- cli.py               # Interface CLI
 |   +-- config.py            # Carregamento de configuracao
@@ -83,7 +83,7 @@ ollama    # Cliente Python para Ollama
 ```bash
 # Clonar repositorio
 git clone <repo-url>
-cd gerador-PR-relese-note
+cd pull-notes
 
 # Instalar em modo desenvolvimento
 pip install -e .
@@ -96,13 +96,13 @@ ollama pull deepseek-r1:8b
 
 ```bash
 # Gerar PR e Release Notes
-gerador-cli /path/to/repo --config config.json --range v1.0..v1.1
+pullnotes /path/to/repo --config config.json --range v1.0..v1.1
 
 # Apenas PR
-gerador-cli /path/to/repo --config config.json --generate pr
+pullnotes /path/to/repo --config config.json --generate pr
 
 # Sem LLM (fallback para subjects)
-gerador-cli /path/to/repo --config config.json --no-llm
+pullnotes /path/to/repo --config config.json --no-llm
 ```
 
 ## Saidas Geradas

@@ -24,5 +24,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /install /usr/local
 
-ENTRYPOINT ["gerador-cli"]
+ENTRYPOINT ["pullnotes"]
 CMD ["--help"]

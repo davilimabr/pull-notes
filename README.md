@@ -1,4 +1,4 @@
-# Gerador de PR e Release Notes
+# PullNotes
 
 Ferramenta local em Python para gerar descricoes de Pull Requests e Release Notes a partir de um repositorio Git.
 
@@ -14,8 +14,9 @@ python -m pip install -e .
 
 ## Uso rapido
 ```
-python -m gerador_cli /caminho/para/repo --range v1.0..v1.1 --config config.default.json
-# compat: python gerador.py /caminho/para/repo --range v1.0..v1.1 --config config.default.json
+python -m pullnotes /caminho/para/repo --range v1.0..v1.1 --config config.default.json
+# ou via comando instalado:
+pullnotes /caminho/para/repo --range v1.0..v1.1 --config config.default.json
 ```
 
 Saidas padrao em `out/`:
@@ -31,7 +32,7 @@ Use `config.default.json` como base e passe com `--config`.
 A etapa de definicao de dominio reutiliza a POC em `preencher_dominio.py` via `domain_step.py`.
 
 ## Estrutura
-O codigo foi organizado em camadas sob `src/gerador_cli/`:
+O codigo foi organizado em camadas sob `src/pullnotes/`:
 - `cli.py`: parsing da CLI.
 - `config.py`: carga/validacao de configuracoes.
 - `domain/`: modelos, servicos e geracao de perfil de dominio.

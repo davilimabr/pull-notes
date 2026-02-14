@@ -31,7 +31,7 @@ Thumbs.db
 
 # Project outputs
 out/
-.gerador/
+.pullnotes/
 dominio.preenchido*.xml
 dominio_*.xml
 

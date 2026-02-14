@@ -1,6 +1,6 @@
 # Interface de Linha de Comando (CLI)
 
-Este documento descreve todos os comandos e opcoes disponiveis na CLI do Gerador de PR e Release Notes.
+Este documento descreve todos os comandos e opcoes disponiveis na CLI do PullNotes.
 
 ## Instalacao
 
@@ -10,12 +10,12 @@ Apos clonar o repositorio, instale em modo desenvolvimento:
 pip install -e .
 ```
 
-Isso disponibiliza o comando `gerador-cli` globalmente.
+Isso disponibiliza o comando `pullnotes` globalmente.
 
 ## Sintaxe
 
 ```bash
-gerador-cli <repo> [OPTIONS]
+pullnotes <repo> [OPTIONS]
 ```
 
 ## Argumentos
@@ -28,9 +28,9 @@ gerador-cli <repo> [OPTIONS]
 
 **Exemplos:**
 ```bash
-gerador-cli .
-gerador-cli /home/user/meu-projeto
-gerador-cli C:\Users\Dev\projeto
+pullnotes .
+pullnotes /home/user/meu-projeto
+pullnotes C:\Users\Dev\projeto
 ```
 
 ## Opcoes
@@ -43,8 +43,8 @@ gerador-cli C:\Users\Dev\projeto
 
 **Exemplo:**
 ```bash
-gerador-cli . --config config.json
-gerador-cli . --config /path/to/custom-config.json
+pullnotes . --config config.json
+pullnotes . --config /path/to/custom-config.json
 ```
 
 ---
@@ -58,16 +58,16 @@ gerador-cli . --config /path/to/custom-config.json
 **Exemplos:**
 ```bash
 # Entre duas tags
-gerador-cli . --config config.json --range v1.0..v1.1
+pullnotes . --config config.json --range v1.0..v1.1
 
 # Entre branch e tag
-gerador-cli . --config config.json --range main..release/2.0
+pullnotes . --config config.json --range main..release/2.0
 
 # Entre commits
-gerador-cli . --config config.json --range abc123..def456
+pullnotes . --config config.json --range abc123..def456
 
 # Desde uma tag ate HEAD
-gerador-cli . --config config.json --range v1.0..HEAD
+pullnotes . --config config.json --range v1.0..HEAD
 ```
 
 **Nota:** Se o range nao funcionar, a ferramenta tenta automaticamente com prefixo `origin/`.
@@ -82,9 +82,9 @@ gerador-cli . --config config.json --range v1.0..HEAD
 
 **Exemplos:**
 ```bash
-gerador-cli . --config config.json --since 2024-01-01
-gerador-cli . --config config.json --since "2024-01-01 00:00:00"
-gerador-cli . --config config.json --since "1 month ago"
+pullnotes . --config config.json --since 2024-01-01
+pullnotes . --config config.json --since "2024-01-01 00:00:00"
+pullnotes . --config config.json --since "1 month ago"
 ```
 
 ---
@@ -97,8 +97,8 @@ gerador-cli . --config config.json --since "1 month ago"
 
 **Exemplos:**
 ```bash
-gerador-cli . --config config.json --until 2024-12-31
-gerador-cli . --config config.json --since 2024-01-01 --until 2024-06-30
+pullnotes . --config config.json --until 2024-12-31
+pullnotes . --config config.json --since 2024-01-01 --until 2024-06-30
 ```
 
 ---
@@ -118,9 +118,9 @@ gerador-cli . --config config.json --since 2024-01-01 --until 2024-06-30
 
 **Exemplos:**
 ```bash
-gerador-cli . --config config.json --generate pr
-gerador-cli . --config config.json --generate release
-gerador-cli . --config config.json --generate both
+pullnotes . --config config.json --generate pr
+pullnotes . --config config.json --generate release
+pullnotes . --config config.json --generate both
 ```
 
 ---
@@ -133,8 +133,8 @@ gerador-cli . --config config.json --generate both
 
 **Exemplos:**
 ```bash
-gerador-cli . --config config.json --generate release --version "2.0.0"
-gerador-cli . --config config.json --version "v1.5.0-beta"
+pullnotes . --config config.json --generate release --version "2.0.0"
+pullnotes . --config config.json --version "v1.5.0-beta"
 ```
 
 ---
@@ -145,8 +145,8 @@ gerador-cli . --config config.json --version "v1.5.0-beta"
 
 **Exemplos:**
 ```bash
-gerador-cli . --config config.json --output-dir ./docs/releases
-gerador-cli . --config config.json --output-dir /tmp/output
+pullnotes . --config config.json --output-dir ./docs/releases
+pullnotes . --config config.json --output-dir /tmp/output
 ```
 
 ---
@@ -163,7 +163,7 @@ gerador-cli . --config config.json --output-dir /tmp/output
 
 **Exemplo:**
 ```bash
-gerador-cli . --config config.json --generate release --refresh-domain
+pullnotes . --config config.json --generate release --refresh-domain
 ```
 
 ---
@@ -174,9 +174,9 @@ gerador-cli . --config config.json --generate release --refresh-domain
 
 **Exemplos:**
 ```bash
-gerador-cli . --config config.json --model llama2:7b
-gerador-cli . --config config.json --model mistral:7b
-gerador-cli . --config config.json --model deepseek-r1:14b
+pullnotes . --config config.json --model llama2:7b
+pullnotes . --config config.json --model mistral:7b
+pullnotes . --config config.json --model deepseek-r1:14b
 ```
 
 ---
@@ -192,7 +192,7 @@ gerador-cli . --config config.json --model deepseek-r1:14b
 
 **Exemplo:**
 ```bash
-gerador-cli . --config config.json --no-llm
+pullnotes . --config config.json --no-llm
 ```
 
 ---
@@ -203,21 +203,21 @@ gerador-cli . --config config.json --no-llm
 
 ```bash
 # PR e Release Notes para commits entre tags
-gerador-cli /path/to/repo --config config.json --range v1.0..v1.1
+pullnotes /path/to/repo --config config.json --range v1.0..v1.1
 ```
 
 ### Apenas Pull Request
 
 ```bash
 # PR para commits do ultimo mes
-gerador-cli . --config config.json --generate pr --since "1 month ago"
+pullnotes . --config config.json --generate pr --since "1 month ago"
 ```
 
 ### Release Notes Completo
 
 ```bash
 # Release com versao customizada e refresh de dominio
-gerador-cli . \
+pullnotes . \
   --config config.json \
   --generate release \
   --range v2.0..v2.1 \
@@ -230,14 +230,14 @@ gerador-cli . \
 
 ```bash
 # Testar coleta e classificacao sem chamar LLM
-gerador-cli . --config config.json --no-llm --output-dir ./debug
+pullnotes . --config config.json --no-llm --output-dir ./debug
 ```
 
 ### Modelo Alternativo
 
 ```bash
 # Usar modelo diferente para melhor qualidade
-gerador-cli . \
+pullnotes . \
   --config config.json \
   --model deepseek-r1:14b \
   --generate both
@@ -317,7 +317,7 @@ Apos execucao, os seguintes arquivos sao gerados no diretorio de saida:
 Alem da CLI, o pacote pode ser importado:
 
 ```python
-from gerador_cli.workflows.sync import run_workflow
+from pullnotes.workflows.sync import run_workflow
 from argparse import Namespace
 
 args = Namespace(

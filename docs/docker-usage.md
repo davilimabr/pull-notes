@@ -1,6 +1,6 @@
 # Docker - Guia de Uso
 
-Guia pratico para executar o `gerador-cli` via Docker, sem necessidade de instalar Python ou dependencias no host.
+Guia pratico para executar o PullNotes via Docker, sem necessidade de instalar Python ou dependencias no host.
 
 ## Pre-requisitos
 
@@ -13,7 +13,7 @@ Guia pratico para executar o `gerador-cli` via Docker, sem necessidade de instal
 |                  Docker Compose                    |
 |                                                    |
 |  +-------------+         +---------------------+  |
-|  |   ollama    |  :11434 |     gerador-cli     |  |
+|  |   ollama    |  :11434 |     pullnotes     |  |
 |  |  (servidor) | <-----> | (aplicacao Python)  |  |
 |  +-------------+         +---------------------+  |
 |        |                          |                |
@@ -29,7 +29,7 @@ Dois containers separados:
 | Container | Funcao |
 |---|---|
 | `ollama` | Servidor LLM (sempre rodando) |
-| `gerador-cli` | CLI Python (executa e termina) |
+| `pullnotes` | CLI Python (executa e termina) |
 
 ## Inicio Rapido
 
@@ -51,10 +51,10 @@ Aguarde o download terminar. Verifique com:
 docker compose exec ollama ollama list
 ```
 
-### 3. Executar o gerador
+### 3. Executar o PullNotes
 
 ```powershell
-docker compose run --rm gerador-cli
+docker compose run --rm pullnotes
 ```
 
 Os arquivos gerados estarao em `./output/`.
@@ -73,14 +73,14 @@ Os arquivos gerados estarao em `./output/`.
 
 ```powershell
 $env:REPO_PATH="C:\Users\Davi\outro-repo"
-docker compose run --rm gerador-cli
+docker compose run --rm pullnotes
 ```
 
 ### Usar config customizado
 
 ```powershell
 $env:CONFIG_PATH="./meu-config.json"
-docker compose run --rm gerador-cli
+docker compose run --rm pullnotes
 ```
 
 ### Flags da CLI
@@ -89,16 +89,16 @@ Os argumentos fixos (`/repo`, `--config`, `--output-dir`) sao definidos no `entr
 
 ```powershell
 # Gerar apenas PR
-docker compose run --rm gerador-cli --generate pr
+docker compose run --rm pullnotes --generate pr
 
 # Gerar com filtro de data
-docker compose run --rm gerador-cli --generate both --since 2025-01-01
+docker compose run --rm pullnotes --generate both --since 2025-01-01
 
 # Gerar com range de revisao
-docker compose run --rm gerador-cli --generate release --range v1.0..v1.1
+docker compose run --rm pullnotes --generate release --range v1.0..v1.1
 
 # Pular LLM (usar assuntos dos commits diretamente)
-docker compose run --rm gerador-cli --no-llm
+docker compose run --rm pullnotes --no-llm
 ```
 
 ## Volumes e Persistencia
@@ -137,7 +137,7 @@ docker run --rm `
     -v ${PWD}:/repo:ro `
     -v ${PWD}/output:/app/output `
     -v ${PWD}/config.default.json:/app/config.json:ro `
-    gerador-cli /repo --config /app/config.json --output-dir /app/output --generate both
+    pullnotes /repo --config /app/config.json --output-dir /app/output --generate both
 ```
 
 ## GPU (NVIDIA)
@@ -181,7 +181,7 @@ docker compose down
 docker compose down -v
 
 # Rebuild da imagem (apos alterar codigo)
-docker compose build --no-cache gerador-cli
+docker compose build --no-cache pullnotes
 ```
 
 ## Troubleshooting
@@ -209,11 +209,11 @@ O `output.dir` no config tem um caminho absoluto Windows. O `--output-dir /app/o
 ### Argumentos duplicados
 
 ```
-gerador-cli: error: unrecognized arguments: /repo
+pullnotes: error: unrecognized arguments: /repo
 ```
 
 Os argumentos `/repo --config --output-dir` ja estao no `entrypoint`. Nao passe-os novamente. Use apenas:
 
 ```powershell
-docker compose run --rm gerador-cli --generate both
+docker compose run --rm pullnotes --generate both
 ```

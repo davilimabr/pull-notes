@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gerador-cli"
+name = "pullnotes"
 version = "0.1.0"
-description = "Gerador de descricoes de PR e release notes a partir de um repositorio Git."
+description = "PullNotes - Gera descricoes de PR e release notes a partir de um repositorio Git."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,10 +21,10 @@ dependencies = [
 where = ["src"]
 
 [tool.setuptools]
-py-modules = ["gerador", "domain_step", "preencher_dominio"]
+py-modules = []
 
 [tool.setuptools.package-data]
-"gerador_cli" = ["prompts/*.txt", "templates/*.md"]
+"pullnotes" = ["prompts/*.txt", "templates/*.md"]
 
 [project.scripts]
-gerador-cli = "gerador_cli.__main__:main"
+pullnotes = "pullnotes.__main__:main"

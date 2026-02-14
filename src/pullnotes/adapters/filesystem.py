@@ -25,8 +25,8 @@ def resolve_cli_path(path_str: str) -> Path:
     path = Path(path_str)
     parts = path.parts
 
-    if "gerador_cli" in parts:
-        idx = parts.index("gerador_cli")
+    if "pullnotes" in parts:
+        idx = parts.index("pullnotes")
         rel_parts = parts[idx + 1 :]
     elif path.is_absolute():
         rel_parts = parts[1:]
@@ -43,8 +43,8 @@ def resolve_cli_or_absolute(path_str: str) -> Path:
         return path
 
     parts = path.parts
-    if "gerador_cli" in parts:
-        idx = parts.index("gerador_cli")
+    if "pullnotes" in parts:
+        idx = parts.index("pullnotes")
         rel_parts = parts[idx + 1 :]
     else:
         rel_parts = parts

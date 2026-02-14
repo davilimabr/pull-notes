@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from gerador_cli.domain.schemas import (
+from pullnotes.domain.schemas import (
     PRFields,
     ReleaseFields,
     CommitGroupSummary,

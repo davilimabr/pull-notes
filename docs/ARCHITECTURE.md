@@ -1,6 +1,6 @@
 # Arquitetura do Sistema
 
-Este documento descreve a arquitetura do Gerador de PR e Release Notes, incluindo os padroes arquiteturais adotados e a organizacao das camadas.
+Este documento descreve a arquitetura do PullNotes, incluindo os padroes arquiteturais adotados e a organizacao das camadas.
 
 ## Padroes Arquiteturais Utilizados
 
@@ -142,7 +142,7 @@ class Commit:
 ## Estrutura de Diretorios por Camada
 
 ```
-src/gerador_cli/
+src/pullnotes/
 |
 +-- domain/                    # NUCLEO (Clean Architecture Core)
 |   +-- models.py              # Entities

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from gerador_cli.domain.schemas import DiffAnchors
+    from pullnotes.domain.schemas import DiffAnchors
 
 
 COMMIT_MARKER = "__COMMIT__"

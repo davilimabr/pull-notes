@@ -1,4 +1,4 @@
-"""Entry point for ``python -m gerador_cli``."""
+"""Entry point for ``python -m pullnotes``."""
 
 from .cli import run
 

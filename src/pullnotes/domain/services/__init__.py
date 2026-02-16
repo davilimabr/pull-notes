@@ -6,7 +6,6 @@ from .aggregation import (
     classify_commit,
     compute_importance,
     group_commits_by_type,
-    summarize_commit,
     summarize_commit_group,
 )
 from .composition import (
@@ -33,7 +32,6 @@ __all__ = [
     "group_commits_by_type",
     "parse_git_log",
     "render_template",
-    "summarize_commit",
     "summarize_commit_group",
     "extract_diff_anchors",
 ]

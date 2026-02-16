@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import asdict
 from pathlib import Path
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 
 from ...adapters.filesystem import ensure_dir
 from ..models import Commit
+
+logger = logging.getLogger(__name__)
 
 
 class _PydanticEncoder(json.JSONEncoder):
@@ -52,6 +55,7 @@ def create_output_structure(base_output_dir: Path, repo_name: str) -> dict[str, 
     }
     for path in paths.values():
         ensure_dir(path)
+    logger.debug("Output structure created at %s", root)
     return paths
 
 
@@ -61,6 +65,7 @@ def export_commits(commits: Iterable[Commit], utils_dir: Path) -> Path:
     commit_data = [asdict(c) for c in commits]
     path = utils_dir / "commit.json"
     path.write_text(json.dumps(commit_data, indent=2, cls=_PydanticEncoder), encoding="utf-8")
+    logger.debug("Exported %d commits to %s", len(commit_data), path)
     return path
 
 
@@ -69,6 +74,7 @@ def export_convention_report(report: str, utils_dir: Path) -> Path:
     ensure_dir(utils_dir)
     path = utils_dir / "conventions.md"
     path.write_text(report, encoding="utf-8")
+    logger.debug("Convention report exported to %s", path)
     return path
 
 
@@ -79,6 +85,7 @@ def export_release(content: str, releases_dir: Path, version: str) -> Path:
     filename = f"release_{sanitized_version}.md"
     path = releases_dir / filename
     path.write_text(content, encoding="utf-8")
+    logger.debug("Release notes exported to %s", path)
     return path
 
 
@@ -89,6 +96,7 @@ def export_pr(content: str, prs_dir: Path, title: str) -> Path:
     filename = f"pr_{sanitized_title}.md"
     path = prs_dir / filename
     path.write_text(content, encoding="utf-8")
+    logger.debug("PR description exported to %s", path)
     return path
 
 

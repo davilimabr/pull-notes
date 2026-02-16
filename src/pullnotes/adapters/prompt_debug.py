@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # Global output directory for prompts - set by workflow
 _output_dir: Optional[Path] = None
@@ -16,6 +19,7 @@ def set_prompt_output_dir(output_dir: Path) -> None:
     global _output_dir, _prompt_counter
     _output_dir = output_dir
     _prompt_counter = 0
+    logger.debug("Prompt debug output dir set to %s", output_dir)
 
 
 def save_prompt(prompt: str, name: str, response: Optional[str] = None) -> Optional[Path]:
@@ -54,4 +58,5 @@ def save_prompt(prompt: str, name: str, response: Optional[str] = None) -> Optio
 
     path = prompts_dir / filename
     path.write_text(content, encoding="utf-8")
+    logger.debug("Prompt saved: %s (%d chars)", filename, len(prompt))
     return path

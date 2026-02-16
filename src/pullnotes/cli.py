@@ -3,8 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import logging
 
 from .workflows.sync import run_workflow
+
+
+def _configure_logging(debug: bool) -> None:
+    """Configure root logger. DEBUG logs only appear when --debug is passed."""
+    level = logging.DEBUG if debug else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,10 +31,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refresh-domain", action="store_true", help="Rebuild domain profile")
     parser.add_argument("--model", default="", help="Override LLM model for summaries")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM summaries, use commit subjects directly")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     return parser
 
 
 def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    _configure_logging(args.debug)
     return run_workflow(args)

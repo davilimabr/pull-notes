@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def load_config(path: Optional[str]) -> Dict:
@@ -17,6 +20,7 @@ def load_config(path: Optional[str]) -> Dict:
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise SystemExit("Config must be a JSON object.")
+    logger.debug("Config loaded from %s (%d top-level keys)", config_path, len(raw))
     return raw
 
 
@@ -119,3 +123,5 @@ def validate_config(config: Dict, *, generate: str) -> None:
         if empty:
             parts.append("Empty config values: " + ", ".join(empty))
         raise SystemExit("Config validation failed. " + " ".join(parts))
+
+    logger.debug("Config validation passed (generate=%s)", generate)

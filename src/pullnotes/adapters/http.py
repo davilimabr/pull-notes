@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
 
 try:
     import httpx
@@ -26,6 +29,8 @@ def call_ollama(model: str, prompt: str, timeout_seconds: float | int | None = N
         except (TypeError, ValueError):
             pass
 
+    logger.debug("Calling Ollama (model=%s, timeout=%.1fs, prompt_len=%d)", model, effective_timeout, len(prompt))
+
     try:
         client = OllamaClient(timeout=httpx.Timeout(effective_timeout))
     except Exception as exc:  # pragma: no cover - defensive
@@ -41,5 +46,9 @@ def call_ollama(model: str, prompt: str, timeout_seconds: float | int | None = N
         raise RuntimeError(f"Ollama request failed: {exc}") from exc
 
     if hasattr(resp, "message"):
-        return resp.message.content.strip()
-    return resp.get("message", {}).get("content", "").strip()
+        content = resp.message.content.strip()
+    else:
+        content = resp.get("message", {}).get("content", "").strip()
+
+    logger.debug("Ollama response received (%d chars)", len(content))
+    return content

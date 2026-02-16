@@ -30,6 +30,7 @@ class StructuredLLMClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self._llm: Optional[ChatOllama] = None
+        logger.debug("StructuredLLMClient created (model=%s, timeout=%.1fs, retries=%d)", model, timeout_seconds, max_retries)
 
     @property
     def llm(self) -> ChatOllama:
@@ -40,6 +41,7 @@ class StructuredLLMClient:
                 temperature=self.temperature,
                 timeout=self.timeout_seconds,
             )
+            logger.debug("ChatOllama initialized (model=%s)", self.model)
         return self._llm
 
     def invoke_structured(
@@ -62,6 +64,8 @@ class StructuredLLMClient:
         Raises:
             ValueError: If output cannot be parsed after max_retries
         """
+        logger.debug("invoke_structured: schema=%s, prompt_len=%d", output_schema.__name__, len(prompt))
+
         # Strategy 1: Try native structured output (tool calling)
         if use_native_structured:
             try:
@@ -93,8 +97,8 @@ class StructuredLLMClient:
 
         for attempt in range(self.max_retries):
             try:
-                # On retry, include the error feedback in the prompt
                 if attempt > 0 and last_error:
+                    logger.debug("Retry attempt %d/%d for %s", attempt + 1, self.max_retries, output_schema.__name__)
                     retry_prompt = (
                         f"{full_prompt}\n\n"
                         f"PREVIOUS ATTEMPT FAILED with error: {last_error}\n"

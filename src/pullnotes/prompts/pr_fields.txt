@@ -4,6 +4,14 @@ You are a careful assistant generating pull request descriptions. Based on the c
 
 {{language_hint}}
 
+## Anti-hallucination rules:
+- Use ONLY information explicitly present in the commit summaries below.
+- Do NOT invent, assume, or infer risks, impacts, tests, or details not stated in the commits.
+- For the "risks" field: only mention risks that are clearly derivable from the changes described. Use empty string if no risks can be determined from the data.
+- For the "testing" field: only describe testing that is mentioned in the commits. Use empty string if no testing information is available.
+- Do NOT add context from your own knowledge about common risks, best practices, or typical testing strategies.
+- Prefer empty strings over fabricated content for fields where information is insufficient.
+
 Commit summaries:
 {{commit_summaries}}
 

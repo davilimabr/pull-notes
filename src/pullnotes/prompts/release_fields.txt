@@ -4,6 +4,15 @@ You are a careful assistant generating release notes. Based on the commit summar
 
 {{language_hint}}
 
+## Anti-hallucination rules:
+- Use ONLY information explicitly present in the commit summaries and domain context below.
+- Do NOT invent, assume, or infer migration steps, known issues, or impacts not stated in the data.
+- For "migration_notes": only include migration steps explicitly mentioned in the commits. Use empty string if none are stated.
+- For "known_issues": only include issues explicitly mentioned. Do NOT fabricate potential issues. Use empty string if none are stated.
+- For "highlights": only describe features and improvements that are explicitly documented in the commits.
+- Do NOT add context from your own knowledge about common upgrade procedures, typical issues, or best practices.
+- Prefer empty strings over fabricated content for fields where information is insufficient.
+
 Release version: {{release_version}}
 
 Domain context (for understanding the project):

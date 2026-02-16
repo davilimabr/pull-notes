@@ -16,6 +16,13 @@ Keep the order of the commits, as they are sorted by level of importance (most i
 
 The final text should be in {{language_hint}}
 
+## Anti-hallucination rules:
+- Use ONLY information explicitly present in the commit list below.
+- Do NOT invent, assume, or infer technical details not stated in the commits (e.g., class names, methods, libraries, patterns, or architectural decisions not mentioned).
+- Do NOT add context from your own knowledge about frameworks, tools, or common practices.
+- If a commit lacks technical details, summarize only what is explicitly stated without fabricating implementation specifics.
+- Prefer to omit information rather than risk stating something not supported by the data.
+
 Return ONLY the bullet points in the following format:
 - Brief technical summary of the change (1-2 sentences with implementation details)
 

@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from ...adapters.subprocess import run_git
 from ...adapters.domain_definition import top_keywords, API_METHOD_RE, EVENT_NAME_RE, SERVICE_NAME_RE
-from ..models import COMMIT_MARKER, GIT_FORMAT, Commit
+from ..models import COMMIT_MARKER, GIT_FORMAT, Commit, is_sensitive_file
 from ..schemas import DiffAnchors, DiffKeyword, DiffArtifact
 
 
@@ -29,6 +29,29 @@ def _prefix_origin_range(revision_range: str) -> str:
 
     left, right = revision_range.split(sep, 1)
     return f"{add_origin(left)}{sep}{add_origin(right)}"
+
+
+def _strip_sensitive_hunks(diff_text: str) -> str:
+    """Remove diff hunks that belong to sensitive files.
+
+    Each hunk starts with ``diff --git a/... b/...``.  When the target file
+    is sensitive the entire section (up to the next ``diff --git`` or EOF) is
+    dropped.
+    """
+    lines = diff_text.splitlines(keepends=True)
+    result: list[str] = []
+    skip = False
+
+    for line in lines:
+        if line.startswith("diff --git"):
+            parts = line.split()
+            # Format: diff --git a/path b/path
+            file_path = parts[3].lstrip("b/") if len(parts) >= 4 else ""
+            skip = is_sensitive_file(file_path)
+        if not skip:
+            result.append(line)
+
+    return "".join(result)
 
 
 def parse_git_log(log_text: str) -> List[Commit]:
@@ -60,13 +83,17 @@ def parse_git_log(log_text: str) -> List[Commit]:
                 cols = line.split("\t")
                 if len(cols) >= 3:
                     add, delete, path = cols[:3]
+                    if is_sensitive_file(path):
+                        continue
                     files.append(path)
                     if add.isdigit():
                         additions += int(add)
                     if delete.isdigit():
                         deletions += int(delete)
             else:
-                files.append(line.strip())
+                stripped = line.strip()
+                if not is_sensitive_file(stripped):
+                    files.append(stripped)
         commits.append(
             Commit(
                 sha=sha,
@@ -142,11 +169,13 @@ def extract_diff_anchors(
     if not diff_text.strip():
         return DiffAnchors()
 
+    clean_diff = _strip_sensitive_hunks(diff_text)
+
     added_lines: List[str] = []
     removed_lines: List[str] = []
     files_changed: List[str] = []
 
-    for line in diff_text.splitlines():
+    for line in clean_diff.splitlines():
         # Extract file names from diff headers
         if line.startswith("diff --git"):
             # Format: diff --git a/path/file b/path/file

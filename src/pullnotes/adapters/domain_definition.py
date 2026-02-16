@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
 
+from ..domain.models import is_sensitive_file
+
 DEFAULT_MAX_TOTAL_BYTES = 400_000
 DEFAULT_MAX_FILE_BYTES = 40_000
 
@@ -181,6 +183,8 @@ def iter_repo_files(repo_dir: Path) -> Iterable[Path]:
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")]
         for file_name in files:
             if file_name.startswith("."):
+                continue
+            if is_sensitive_file(file_name):
                 continue
             path = Path(root, file_name)
             if is_text_file(path):

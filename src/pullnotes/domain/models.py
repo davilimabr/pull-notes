@@ -12,6 +12,25 @@ if TYPE_CHECKING:
 COMMIT_MARKER = "__COMMIT__"
 GIT_FORMAT = f"{COMMIT_MARKER}%n%H%x1f%an%x1f%ae%x1f%ad%x1f%s"
 
+# --- Sensitive file patterns ---
+SENSITIVE_FILENAMES: frozenset[str] = frozenset({".env"})
+SENSITIVE_PREFIXES: tuple[str, ...] = (".env.",)
+
+
+def is_sensitive_file(file_path: str) -> bool:
+    """Return True if *file_path* refers to a sensitive file that should be
+    excluded from processing (e.g. ``.env``, ``.env.local``).
+
+    Works with both forward-slash (git) and OS-native paths.
+    """
+    basename = file_path.rsplit("/", 1)[-1]
+    if "\\" in basename:
+        basename = basename.rsplit("\\", 1)[-1]
+
+    if basename in SENSITIVE_FILENAMES:
+        return True
+    return any(basename.startswith(p) for p in SENSITIVE_PREFIXES)
+
 
 @dataclass
 class Commit:

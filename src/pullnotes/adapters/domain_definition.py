@@ -11,6 +11,7 @@ generated using Pydantic models in domain_profile.py.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import unicodedata
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
 
 from ..domain.models import is_sensitive_file
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_TOTAL_BYTES = 400_000
 DEFAULT_MAX_FILE_BYTES = 40_000
@@ -213,10 +216,12 @@ def build_repository_index(
         content = safe_read(file_path, max_file_bytes)
         size_b = len(content.encode("utf-8", errors="replace"))
         if total_bytes + size_b > max_total_bytes:
+            logger.debug("Repository index byte budget reached (%d/%d bytes), stopping", total_bytes, max_total_bytes)
             break
         rel = file_path.relative_to(repo_dir).as_posix()
         index.append(IndexedFile(relative_path=rel, content=content))
         total_bytes += size_b
+    logger.debug("Repository index built: %d files, %d bytes", len(index), total_bytes)
     return index
 
 
@@ -286,6 +291,7 @@ def extract_anchors(index: Sequence[IndexedFile]) -> Dict[str, List[Tuple[str, s
         if len(art_items) >= 12:
             break
 
+    logger.debug("Extracted anchors: %d keywords, %d artifacts", len(kw_items), len(art_items))
     return {"keywords": kw_items, "artifacts": art_items}
 
 
@@ -302,4 +308,5 @@ def build_context_snippets(index: Sequence[IndexedFile], budget: int = DEFAULT_M
             break
         parts.append(chunk)
         total += size_b
+    logger.debug("Context snippets: %d files, %d bytes", len(parts), total)
     return "".join(parts)

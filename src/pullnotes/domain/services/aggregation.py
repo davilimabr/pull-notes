@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
-import sys
 from typing import Dict, List, Tuple
 
 from ...adapters.prompt_debug import save_prompt
 from ...prompts import load_prompt
 from ..models import Commit
+
+logger = logging.getLogger(__name__)
 
 _JS_REGEX_RE = re.compile(r"^/(.+)/([a-zA-Z]*)$")
 
@@ -76,6 +78,7 @@ def compute_importance(commit: Commit, config: Dict) -> Tuple[float, str]:
     for item in bands:
         if score >= item["min"]:
             band = item["name"]
+    logger.debug("Commit %s importance: score=%.2f band=%s", commit.short_sha, score, band)
     return score, band
 
 
@@ -94,6 +97,10 @@ def group_commits_by_type(commits: List[Commit], config: Dict) -> List[Tuple[str
     )
     if other_commits:
         grouped.append(("other", other_commits))
+
+    for type_name, group in grouped:
+        if group:
+            logger.debug("Group '%s': %d commits", type_name, len(group))
     return grouped
 
 
@@ -135,23 +142,6 @@ def _format_diff_anchors_for_prompt(commit: Commit) -> str:
         sections.append(f"Artifacts:\n{artifacts_section}")
 
     return "\n\n".join(sections) if sections else "(no changes detected)"
-
-
-def summarize_commit(commit: Commit, config: Dict, model: str) -> str:
-    """Summarize commit using LLM."""
-    from ...adapters.http import call_ollama
-
-    change_summary = _format_diff_anchors_for_prompt(commit)
-    prompt = load_prompt(
-        "commit_summary",
-        {
-            "language_hint": build_language_hint(config["language"]),
-            "commit_message": f"{commit.subject}\n{commit.body}",
-            "files": "\n".join(f"- {f}" for f in commit.files[:30]),
-            "change_summary": change_summary,
-        },
-    )
-    return call_ollama(model, prompt, config.get("llm_timeout_seconds"))
 
 
 def _build_commit_blocks(commits: List[Commit], diff_cfg: Dict) -> str:
@@ -230,8 +220,8 @@ def summarize_commit_group(
     label = commit_types.get(commit_type, {}).get("label") or config.get("other_label", commit_type)
     diff_cfg = config["diff"]
 
-    # Choose the appropriate prompt based on output type
     prompt_name = f"commit_group_summary_{output_type}"
+    logger.debug("Summarizing group '%s' (%d commits) for %s", label, len(commits), output_type)
 
     prompt = load_prompt(
         prompt_name,
@@ -254,7 +244,7 @@ def summarize_commit_group(
     response_text = "\n".join(f"- {point}" for point in result.summary_points)
     save_prompt(prompt, f"commit_group_{commit_type}_{output_type}", response_text)
 
-    # Format as bullet points for template compatibility
+    logger.debug("Group '%s' summarized: %d bullet points", label, len(result.summary_points))
     return response_text
 
 
@@ -282,15 +272,13 @@ def summarize_all_groups(
             summary_text = summarize_commit_group(change_type, commits, config, model, output_type)
             summaries[change_type] = summary_text
         except Exception as exc:
-            # On error, generate fallback bullets from commit subjects
             type_label = config["commit_types"].get(change_type, {}).get("label") or config.get(
                 "other_label", change_type
             )
-            print(
-                f"WARNING: Falha ao resumir grupo {type_label}: {exc}. Usando assuntos como fallback.",
-                file=sys.stderr,
+            logger.warning(
+                "Falha ao resumir grupo %s: %s. Usando assuntos como fallback.",
+                type_label, exc,
             )
-            # Generate simple bullets from subjects
             bullets = [f"- {commit.subject}" for commit in commits]
             summaries[change_type] = "\n".join(bullets)
 
@@ -316,4 +304,5 @@ def build_convention_report(commits: List[Commit]) -> str:
     lines += ["", "## Bad Examples"]
     lines += [f"- {s}" for s in examples_bad] if examples_bad else ["- (none)"]
     lines.append("")
+    logger.debug("Convention report: %d/%d conventional", classified, total)
     return "\n".join(lines)

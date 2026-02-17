@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_dir(path: Path) -> None:
@@ -49,7 +52,9 @@ def resolve_cli_or_absolute(path_str: str) -> Path:
     else:
         rel_parts = parts
 
-    return _CLI_ROOT.joinpath(*rel_parts)
+    resolved = _CLI_ROOT.joinpath(*rel_parts)
+    logger.debug("Resolved path '%s' -> %s", path_str, resolved)
+    return resolved
 
 
 def get_repository_name(repo_dir: Path) -> str:
@@ -79,12 +84,14 @@ def get_repository_name(repo_dir: Path) -> str:
             repo_name = remote_url.rstrip("/").split("/")[-1]
             if repo_name.endswith(".git"):
                 repo_name = repo_name[:-4]
+            logger.debug("Repository name from remote: %s", repo_name)
             return _sanitize_filename(repo_name)
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         pass
 
-    # Fallback to directory name
-    return _sanitize_filename(repo_dir.name)
+    name = _sanitize_filename(repo_dir.name)
+    logger.debug("Repository name from directory: %s", name)
+    return name
 
 
 def _sanitize_filename(name: str) -> str:

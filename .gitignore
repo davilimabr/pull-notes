@@ -45,3 +45,4 @@ dominio_*.xml
 .claude/
 thoughts/*
 docs/plans/*
+output/*

@@ -16,6 +16,13 @@ Keep the order of the commits, as they are sorted by level of importance (most i
 
 The final text should be in {{language_hint}}
 
+## Anti-hallucination rules:
+- Use ONLY information explicitly present in the commit list below.
+- Do NOT invent, assume, or infer user-facing impacts, benefits, or behaviors not stated in the commits.
+- Do NOT add context from your own knowledge about how features typically work or what users might expect.
+- If a commit's user-visible impact is unclear, describe only what is explicitly stated without guessing user experience.
+- Prefer to omit information rather than risk stating something not supported by the data.
+
 Return ONLY the bullet points in the following format:
 - Brief functional summary of the change (1-2 sentences focusing on what users will experience)
 

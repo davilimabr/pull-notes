@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional
@@ -10,6 +11,8 @@ from ...adapters.subprocess import run_git
 from ...adapters.domain_definition import top_keywords, API_METHOD_RE, EVENT_NAME_RE, SERVICE_NAME_RE
 from ..models import COMMIT_MARKER, GIT_FORMAT, Commit, is_sensitive_file
 from ..schemas import DiffAnchors, DiffKeyword, DiffArtifact
+
+logger = logging.getLogger(__name__)
 
 
 def _prefix_origin_range(revision_range: str) -> str:
@@ -106,11 +109,13 @@ def parse_git_log(log_text: str) -> List[Commit]:
                 deletions=deletions,
             )
         )
+    logger.debug("Parsed %d commits from git log", len(commits))
     return commits
 
 
 def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[str], until: Optional[str]) -> List[Commit]:
     """Fetch commits within a git range and attach body/diff."""
+    logger.debug("Fetching commits from %s (range=%s, since=%s, until=%s)", repo_dir, revision_range, since, until)
     args_base = ["log", "--date=iso-strict", f"--pretty=format:{GIT_FORMAT}", "--numstat"]
     if since:
         args_base.append(f"--since={since}")
@@ -127,6 +132,7 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
         origin_range = _prefix_origin_range(revision_range)
         if origin_range == revision_range:
             raise
+        logger.debug("Retrying git log with origin-prefixed range: %s", origin_range)
         retry_args = args_base + [origin_range]
         try:
             log_text = run_git(repo_dir, retry_args)
@@ -142,7 +148,7 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
         diff = run_git(repo_dir, ["show", "--pretty=format:", "--unified=3", "--no-color", commit.sha])
         return commit, body, diff
 
-    # Executa todas as chamadas git em paralelo
+    logger.debug("Fetching body and diff for %d commits in parallel...", len(commits))
     with ThreadPoolExecutor() as executor:
         futures = {executor.submit(fetch_commit_details, commit): commit for commit in commits}
         for future in as_completed(futures):
@@ -151,6 +157,7 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
             commit.diff = diff
             commit.diff_anchors = extract_diff_anchors(diff)
 
+    logger.debug("All commit details fetched")
     return commits
 
 

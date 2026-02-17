@@ -45,6 +45,7 @@ def _anchors_to_pydantic(anchors: Dict[str, List[tuple]]) -> DomainAnchors:
         if kind in valid_kinds:
             artifacts.append(Artifact(kind=ArtifactKind(kind), name=name))
 
+    logger.debug("Anchors extracted: %d keywords, %d artifacts", len(keywords), len(artifacts))
     return DomainAnchors(keywords=keywords, artifacts=artifacts)
 
 
@@ -76,18 +77,18 @@ def generate_domain_profile(
         DomainBuildError: If profile cannot be generated
     """
     repo_dir = repo_dir.resolve()
+    logger.debug("Generating domain profile for %s (model=%s)", repo_dir, model_name)
 
-    # Build repository index
     index = build_repository_index(repo_dir, max_total_bytes, max_file_bytes)
     if not index:
         raise DomainBuildError("No eligible text files found in repository.")
+    logger.debug("Repository index: %d files", len(index))
 
-    # Extract anchors from codebase
     anchors = extract_anchors(index)
     anchors_pydantic = _anchors_to_pydantic(anchors)
 
-    # Build context for LLM
     repo_context = build_context_snippets(index, budget=max_total_bytes)
+    logger.debug("Context snippets: %d chars", len(repo_context))
 
     # Create prompt with pre-filled anchors
     prompt = load_prompt(
@@ -107,10 +108,11 @@ def generate_domain_profile(
     )
 
     try:
+        logger.debug("Invoking LLM for domain profile...")
         profile = client.invoke_structured(prompt, ProjectProfile)
-        # Ensure anchors are preserved (LLM might modify them)
         profile.domain.domain_anchors = anchors_pydantic
         save_prompt(prompt, "domain_profile", profile.model_dump_json(indent=2))
+        logger.debug("Domain profile generated successfully")
         return profile
     except ValueError as e:
         raise DomainBuildError(f"Failed to generate domain profile: {e}") from e
@@ -123,9 +125,11 @@ def save_domain_profile(profile: ProjectProfile, output_path: Path) -> None:
         profile.model_dump_json(indent=2),
         encoding="utf-8"
     )
+    logger.debug("Domain profile saved to %s", output_path)
 
 
 def load_domain_profile(path: Path) -> ProjectProfile:
     """Load domain profile from JSON file."""
+    logger.debug("Loading domain profile from %s", path)
     data = json.loads(path.read_text(encoding="utf-8"))
     return ProjectProfile.model_validate(data)

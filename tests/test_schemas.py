@@ -4,8 +4,6 @@ import pytest
 from pydantic import ValidationError
 
 from pullnotes.domain.schemas import (
-    PRFields,
-    ReleaseFields,
     CommitGroupSummary,
     ProjectProfile,
     ProjectType,
@@ -15,42 +13,6 @@ from pullnotes.domain.schemas import (
     DomainDetails,
     Keyword,
 )
-
-
-class TestPRFields:
-    def test_valid_pr_fields(self):
-        fields = PRFields(
-            title="Add authentication feature",
-            summary="Implemented JWT-based auth",
-            risks="",
-            testing="Unit tests added"
-        )
-        assert fields.title == "Add authentication feature"
-
-    def test_title_too_short(self):
-        with pytest.raises(ValidationError):
-            PRFields(title="Fix", summary="Some fix")
-
-    def test_missing_required_field(self):
-        with pytest.raises(ValidationError):
-            PRFields(summary="No title provided")
-
-
-class TestReleaseFields:
-    def test_valid_release_fields(self):
-        fields = ReleaseFields(
-            executive_summary="Major update with new features",
-            highlights="- Feature A\n- Feature B"
-        )
-        assert fields.executive_summary == "Major update with new features"
-
-    def test_optional_fields_default_empty(self):
-        fields = ReleaseFields(
-            executive_summary="Summary",
-            highlights="Highlights"
-        )
-        assert fields.migration_notes == ""
-        assert fields.known_issues == ""
 
 
 class TestCommitGroupSummary:

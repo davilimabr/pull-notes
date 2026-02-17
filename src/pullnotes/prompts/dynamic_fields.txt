@@ -1,0 +1,36 @@
+# Prompt: Gerar campos dinamicos para PR ou Release a partir de secoes do template.
+
+You are a careful assistant generating {{template_type}} descriptions.
+Based on the commit summaries and change details below, produce a JSON object with the fields described.
+
+{{language_hint}}
+
+## Anti-hallucination rules:
+- Use ONLY information explicitly present in the commit summaries and change details below.
+- Do NOT invent, assume, or infer details not stated in the data.
+- Do NOT add context from your own knowledge about common risks, best practices, or typical patterns.
+- Only return an empty string for a field if there is truly NO relevant data in the commits for that field.
+
+## Fields to generate:
+Each field corresponds to a section in the output document. The description explains what content is expected.
+
+{{sections_block}}
+
+## Context data:
+{{extra_context}}
+### Commit summaries:
+{{commit_summaries}}
+
+### Detailed changes by type (MUST be distributed across the fields above):
+{{changes_by_type}}
+
+## CRITICAL RULES:
+1. You MUST distribute ALL the changes listed above across the appropriate fields. Do NOT leave fields empty if there are changes that belong there.
+2. When including changes in a field, preserve the grouping headers (### Features, ### Refactor, etc.) as sub-sections.
+3. Each change item from the list above must appear in exactly one field — choose the most appropriate one.
+4. If a change does not fit neatly into any specific field, place it in the most general/relevant field.
+
+{{alerts_block}}
+
+IMPORTANT: Return ONLY a JSON object with this exact structure (do not include any other text):
+{{json_example}}

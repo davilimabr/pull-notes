@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import sys
+import logging
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
@@ -21,12 +22,12 @@ from ..domain.services.aggregation import (
     summarize_all_groups,
 )
 from ..domain.services.composition import (
-    build_pr_fields,
-    build_release_fields,
+    build_fields_from_template,
     build_version_label,
     render_changes_by_type_from_summaries,
-    render_template,
+    render_from_parsed_template,
 )
+from ..domain.services.template_parser import parse_template
 from ..domain.services.data_collection import get_commits
 from ..domain.services.export import (
     create_output_structure,
@@ -36,32 +37,25 @@ from ..domain.services.export import (
     export_release,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _classify_commits(commits, config):
     for commit in commits:
         commit.change_type, commit.is_conventional = classify_commit(commit.subject, config["commit_types"])
+    logger.debug("Classified %d commits", len(commits))
 
 
 def _score_commits(commits, config):
     for commit in commits:
         commit.importance_score, commit.importance_band = compute_importance(commit, config)
+    logger.debug("Scored %d commits", len(commits))
 
 
 def _generate_summaries_for_output(grouped_commits, config, llm_model: str, output_type: str, no_llm: bool) -> Dict[str, str]:
-    """Generate summaries for each group of commits based on output type.
-
-    Args:
-        grouped_commits: List of (type, commits) tuples
-        config: Configuration dictionary
-        llm_model: LLM model to use
-        output_type: Either "pr" (technical) or "release" (user-facing)
-        no_llm: If True, use commit subjects as fallback
-
-    Returns:
-        Dictionary mapping change_type to formatted summary text (bullet points)
-    """
+    """Generate summaries for each group of commits based on output type."""
     if no_llm:
-        # Generate simple bullet list from subjects
+        logger.debug("Skipping LLM summaries (--no-llm), using commit subjects for %s", output_type)
         summaries = {}
         for change_type, commits in grouped_commits:
             if commits:
@@ -69,6 +63,7 @@ def _generate_summaries_for_output(grouped_commits, config, llm_model: str, outp
                 summaries[change_type] = "\n".join(bullets)
         return summaries
 
+    logger.debug("Generating LLM summaries for %s (model=%s)", output_type, llm_model)
     return summarize_all_groups(grouped_commits, config, llm_model, output_type)
 
 
@@ -76,30 +71,32 @@ def _warn_on_non_conventional(commits) -> None:
     non_conventional = [c for c in commits if not c.is_conventional]
     if not non_conventional:
         return
-    print("⚠️ WARNING: Commits fora do padrao definido foram encontrados, busque seguir a convenção definida ou altere no arquivo de configuração, para melhor funcionamento da ferramenta.", file=sys.stderr)
+    logger.warning(
+        "Commits fora do padrao definido foram encontrados (%d), busque seguir a convencao definida "
+        "ou altere no arquivo de configuracao, para melhor funcionamento da ferramenta.",
+        len(non_conventional),
+    )
+    for c in non_conventional:
+        logger.debug("  Non-conventional commit: %s %s", c.short_sha, c.subject)
 
 
 def _prepare_domain_profile(
     repo_dir: Path, utils_dir: Path, domain_cfg, config: Dict
 ) -> ProjectProfile:
     """Prepare domain profile, loading from cache or generating new one."""
-    # Get repository name to include in domain filename
     repo_name = get_repository_name(repo_dir)
-
-    # Build domain filename with repository name (now JSON instead of XML)
     domain_filename = f"domain_profile_{repo_name}.json"
-
-    # Save domain file in utils directory
     domain_out = utils_dir / domain_filename
 
-    # Try to load existing profile
     if domain_out.exists():
         try:
-            return load_domain_profile(domain_out)
-        except Exception:
-            pass  # Fall through to regenerate
+            profile = load_domain_profile(domain_out)
+            logger.debug("Loaded cached domain profile from %s", domain_out)
+            return profile
+        except Exception as exc:
+            logger.debug("Failed to load cached domain profile: %s", exc)
 
-    # Generate new profile
+    logger.debug("Generating new domain profile for %s", repo_name)
     try:
         profile = generate_domain_profile(
             repo_dir=repo_dir,
@@ -111,6 +108,7 @@ def _prepare_domain_profile(
             language=config.get("language", "en"),
         )
         save_domain_profile(profile, domain_out)
+        logger.debug("Domain profile saved to %s", domain_out)
         return profile
     except DomainBuildError as exc:
         raise SystemExit(f"Domain build failed: {exc}") from exc
@@ -123,20 +121,22 @@ def run_workflow(args) -> int:
     if not repo_dir.is_dir():
         raise SystemExit(f"Repo dir not found: {repo_dir}")
 
+    logger.debug("Starting workflow for repo: %s", repo_dir)
+
     config = load_config(args.config)
     validate_config(config, generate=args.generate)
     llm_model = args.model or config["llm_model"]
+    logger.debug("Config loaded. LLM model: %s, generate: %s", llm_model, args.generate)
 
     base_output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
     repo_name = get_repository_name(repo_dir)
+    logger.debug("Output dir: %s, repo name: %s", base_output_dir, repo_name)
 
-    # Create the output directory structure: {repo_name}/utils, releases, prs
     output_paths = create_output_structure(base_output_dir, repo_name)
-
-    # Configure prompt debug output directory (uses utils dir)
     set_prompt_output_dir(output_paths['utils'])
 
     domain_profile = None
+    logger.debug("Fetching commits and domain profile in parallel...")
     with ThreadPoolExecutor(max_workers=2) as executor:
         commits_future = executor.submit(get_commits, repo_dir, args.revision_range, args.since, args.until)
         domain_future = None
@@ -146,6 +146,7 @@ def run_workflow(args) -> int:
             )
 
         commits = commits_future.result()
+        logger.debug("Fetched %d commits", len(commits))
         if domain_future:
             domain_profile = domain_future.result()
 
@@ -160,77 +161,91 @@ def run_workflow(args) -> int:
 
     _score_commits(commits, config)
     grouped_commits = group_commits_by_type(commits, config)
+    logger.debug("Grouped commits into %d type groups", len(grouped_commits))
 
     export_commits(commits, output_paths['utils'])
 
-    # Generate summaries based on what output types we need
     pr_summaries = {}
     release_summaries = {}
 
     if args.generate in {"pr", "both"}:
+        logger.debug("Generating PR summaries...")
         pr_summaries = _generate_summaries_for_output(grouped_commits, config, llm_model, "pr", args.no_llm)
 
     if args.generate in {"release", "both"}:
+        logger.debug("Generating release summaries...")
         release_summaries = _generate_summaries_for_output(grouped_commits, config, llm_model, "release", args.no_llm)
 
     if args.generate in {"pr", "both"}:
-        # Generate PR-specific changes (technical details)
+        logger.debug("Building PR output...")
         pr_changes_md = render_changes_by_type_from_summaries(grouped_commits, pr_summaries, config)
 
         alerts = [c.subject for c in commits if not c.is_conventional]
-        alerts_md = "\n".join(f"- {a}" for a in alerts) if alerts else config["alerts"]["none_text"]
+        alerts_md = "\n".join(f"- {a}" for a in alerts) if alerts else ""
+
         pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
-        pr_template = pr_template_path.read_text(encoding="utf-8")
+        logger.debug("PR template: %s", pr_template_path)
+        pr_template_text = pr_template_path.read_text(encoding="utf-8")
+        parsed_pr = parse_template(pr_template_text)
+
         try:
-            pr_fields = build_pr_fields(pr_summaries, config, llm_model)
+            pr_fields = build_fields_from_template(
+                parsed_pr, pr_summaries, pr_changes_md, config, llm_model,
+                template_type="pr",
+                alerts=alerts_md,
+            )
         except Exception as exc:
             raise SystemExit(f"Falha ao gerar campos de PR com LLM: {exc}") from exc
-        # Convert Pydantic model to dict and add extra fields
-        pr_fields_dict = pr_fields.model_dump()
-        pr_fields_dict.update(
-            {
-                "changes_by_type": pr_changes_md,
-                "alerts": alerts_md,
-            }
+
+        pr_title = pr_fields.get("title", "untitled")
+        pr_text = render_from_parsed_template(
+            parsed_pr, pr_fields,
+            title=pr_title,
         )
-        pr_text = render_template(pr_template, pr_fields_dict)
-        pr_title = pr_fields_dict.get("title", "untitled")
-        export_pr(pr_text, output_paths['prs'], pr_title)
+        path = export_pr(pr_text, output_paths['prs'], pr_title)
+        logger.debug("PR exported to %s", path)
 
     if args.generate in {"release", "both"}:
-        # Generate Release-specific changes (user-facing functionality)
+        logger.debug("Building release output...")
         release_changes_md = render_changes_by_type_from_summaries(grouped_commits, release_summaries, config)
 
-        domain_cfg = config["domain"]
         if domain_profile is None and not args.refresh_domain:
-            # Try to load existing domain profile from utils directory
             domain_filename = f"domain_profile_{repo_name}.json"
             domain_out = output_paths['utils'] / domain_filename
             if domain_out.exists():
                 try:
                     domain_profile = load_domain_profile(domain_out)
+                    logger.debug("Loaded domain profile from %s", domain_out)
                 except Exception:
-                    pass  # Will use empty context
+                    pass
 
-        # Convert domain profile to JSON string for the prompt
         domain_context = domain_profile.model_dump_json(indent=2) if domain_profile else ""
 
         release_template_path = resolve_cli_or_absolute(config["templates"]["release"])
-        release_template = release_template_path.read_text(encoding="utf-8")
+        logger.debug("Release template: %s", release_template_path)
+        release_template_text = release_template_path.read_text(encoding="utf-8")
+        parsed_release = parse_template(release_template_text)
+
         version_label = build_version_label(args.version, args.revision_range, config["release"])
+        logger.debug("Release version: %s", version_label)
         try:
-            release_fields = build_release_fields(release_summaries, domain_context, config, llm_model, version_label)
+            release_fields = build_fields_from_template(
+                parsed_release, release_summaries, release_changes_md, config, llm_model,
+                template_type="release",
+                domain_context=domain_context,
+                version=version_label,
+            )
         except Exception as exc:
             raise SystemExit(f"Falha ao gerar campos de release com LLM: {exc}") from exc
-        # Convert Pydantic model to dict and add extra fields
-        release_fields_dict = release_fields.model_dump()
-        release_fields_dict.update(
-            {
-                "version": version_label,
-                "changes_by_type": release_changes_md,
-            }
-        )
-        release_text = render_template(release_template, release_fields_dict)
-        export_release(release_text, output_paths['releases'], version_label)
 
+        release_date = datetime.now().strftime(config["release"]["date_format"])
+        release_text = render_from_parsed_template(
+            parsed_release, release_fields,
+            title=f"Notas de Versao \u2014 {version_label}",
+            subtitle=f"**Data de lancamento**: {release_date}",
+        )
+        path = export_release(release_text, output_paths['releases'], version_label)
+        logger.debug("Release exported to %s", path)
+
+    logger.debug("Workflow completed successfully")
     return 0

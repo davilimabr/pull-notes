@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Tuple, TYPE_CHECKING
 
 from ...adapters.prompt_debug import save_prompt
 from ...prompts import load_prompt
 from ..models import Commit
+
+if TYPE_CHECKING:
+    from ...adapters.llm_structured import StructuredLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +203,7 @@ def _build_commit_blocks(commits: List[Commit], diff_cfg: Dict) -> str:
 
 
 def summarize_commit_group(
-    commit_type: str, commits: List[Commit], config: Dict, model: str, output_type: str = "pr"
+    commit_type: str, commits: List[Commit], config: Dict, client: "StructuredLLMClient", output_type: str = "pr"
 ) -> str:
     """Summarize a list of commits of the same type using structured output.
 
@@ -207,14 +211,13 @@ def summarize_commit_group(
         commit_type: Type of commits (feat, fix, etc.)
         commits: List of commits to summarize
         config: Configuration dictionary
-        model: LLM model to use
+        client: Shared StructuredLLMClient instance
         output_type: Either "pr" (technical details) or "release" (user-facing)
 
     Returns:
         Formatted bullet points as string (for backward compatibility with templates)
     """
     from ..schemas import CommitGroupSummary
-    from ...adapters.llm_structured import StructuredLLMClient
 
     commit_types = config.get("commit_types", {})
     label = commit_types.get(commit_type, {}).get("label") or config.get("other_label", commit_type)
@@ -232,12 +235,6 @@ def summarize_commit_group(
         },
     )
 
-    client = StructuredLLMClient(
-        model=model,
-        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
-        max_retries=config.get("llm_max_retries", 3),
-    )
-
     result = client.invoke_structured(prompt, CommitGroupSummary)
 
     # Save prompt for debugging
@@ -249,14 +246,14 @@ def summarize_commit_group(
 
 
 def summarize_all_groups(
-    grouped_commits: List[Tuple[str, List[Commit]]], config: Dict, model: str, output_type: str = "pr"
+    grouped_commits: List[Tuple[str, List[Commit]]], config: Dict, client: "StructuredLLMClient", output_type: str = "pr"
 ) -> Dict[str, str]:
     """Summarize all commit groups in parallel LLM calls.
 
     Args:
         grouped_commits: List of (type, commits) tuples
         config: Configuration dictionary
-        model: LLM model to use
+        client: Shared StructuredLLMClient instance
         output_type: Either "pr" (technical) or "release" (user-facing)
 
     Returns:
@@ -264,23 +261,35 @@ def summarize_all_groups(
     """
     summaries: Dict[str, str] = {}
 
-    for change_type, commits in grouped_commits:
-        if not commits:
-            continue
+    active_groups = [(ct, cs) for ct, cs in grouped_commits if cs]
+    if not active_groups:
+        return summaries
 
-        try:
-            summary_text = summarize_commit_group(change_type, commits, config, model, output_type)
-            summaries[change_type] = summary_text
-        except Exception as exc:
-            type_label = config["commit_types"].get(change_type, {}).get("label") or config.get(
-                "other_label", change_type
-            )
-            logger.warning(
-                "Falha ao resumir grupo %s: %s. Usando assuntos como fallback.",
-                type_label, exc,
-            )
-            bullets = [f"- {commit.subject}" for commit in commits]
-            summaries[change_type] = "\n".join(bullets)
+    def _summarize_one(change_type, commits):
+        return change_type, summarize_commit_group(change_type, commits, config, client, output_type)
+
+    with ThreadPoolExecutor(max_workers=len(active_groups)) as executor:
+        futures = {
+            executor.submit(_summarize_one, ct, cs): ct
+            for ct, cs in active_groups
+        }
+        for future in as_completed(futures):
+            change_type = futures[future]
+            try:
+                _, summary_text = future.result()
+                summaries[change_type] = summary_text
+            except Exception as exc:
+                type_label = config["commit_types"].get(change_type, {}).get("label") or config.get(
+                    "other_label", change_type
+                )
+                logger.warning(
+                    "Falha ao resumir grupo %s: %s. Usando assuntos como fallback.",
+                    type_label, exc,
+                )
+                group_commits = [cs for ct, cs in grouped_commits if ct == change_type]
+                if group_commits:
+                    bullets = [f"- {c.subject}" for c in group_commits[0]]
+                    summaries[change_type] = "\n".join(bullets)
 
     return summaries
 

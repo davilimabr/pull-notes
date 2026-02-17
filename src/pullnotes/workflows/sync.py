@@ -10,6 +10,7 @@ from typing import Dict
 
 from ..adapters.filesystem import get_repository_name, resolve_cli_or_absolute, resolve_repo_path
 from ..adapters.domain_profile import generate_domain_profile, save_domain_profile, load_domain_profile
+from ..adapters.llm_structured import StructuredLLMClient
 from ..adapters.prompt_debug import set_prompt_output_dir
 from ..config import load_config, validate_config
 from ..domain.errors import DomainBuildError
@@ -52,7 +53,7 @@ def _score_commits(commits, config):
     logger.debug("Scored %d commits", len(commits))
 
 
-def _generate_summaries_for_output(grouped_commits, config, llm_model: str, output_type: str, no_llm: bool) -> Dict[str, str]:
+def _generate_summaries_for_output(grouped_commits, config, client: StructuredLLMClient, output_type: str, no_llm: bool) -> Dict[str, str]:
     """Generate summaries for each group of commits based on output type."""
     if no_llm:
         logger.debug("Skipping LLM summaries (--no-llm), using commit subjects for %s", output_type)
@@ -63,8 +64,8 @@ def _generate_summaries_for_output(grouped_commits, config, llm_model: str, outp
                 summaries[change_type] = "\n".join(bullets)
         return summaries
 
-    logger.debug("Generating LLM summaries for %s (model=%s)", output_type, llm_model)
-    return summarize_all_groups(grouped_commits, config, llm_model, output_type)
+    logger.debug("Generating LLM summaries for %s (model=%s)", output_type, client.model)
+    return summarize_all_groups(grouped_commits, config, client, output_type)
 
 
 def _warn_on_non_conventional(commits) -> None:
@@ -165,18 +166,96 @@ def run_workflow(args) -> int:
 
     export_commits(commits, output_paths['utils'])
 
-    pr_summaries = {}
-    release_summaries = {}
+    client = StructuredLLMClient(
+        model=llm_model,
+        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
+        max_retries=config.get("llm_max_retries", 3),
+    )
+    _ = client.llm  # Force lazy initialization before parallel use
 
-    if args.generate in {"pr", "both"}:
+    if args.generate == "both":
+        # Fase A: Generate summaries in parallel
+        logger.debug("Generating PR and release summaries in parallel...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            pr_future = executor.submit(_generate_summaries_for_output, grouped_commits, config, client, "pr", args.no_llm)
+            release_future = executor.submit(_generate_summaries_for_output, grouped_commits, config, client, "release", args.no_llm)
+            pr_summaries = pr_future.result()
+            release_summaries = release_future.result()
+
+        # Fase B: Prepare intermediate data (fast, no LLM)
+        pr_changes_md = render_changes_by_type_from_summaries(grouped_commits, pr_summaries, config)
+        release_changes_md = render_changes_by_type_from_summaries(grouped_commits, release_summaries, config)
+
+        alerts = [c.subject for c in commits if not c.is_conventional]
+        alerts_md = "\n".join(f"- {a}" for a in alerts) if alerts else ""
+
+        pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
+        logger.debug("PR template: %s", pr_template_path)
+        parsed_pr = parse_template(pr_template_path.read_text(encoding="utf-8"))
+
+        if domain_profile is None and not args.refresh_domain:
+            domain_filename = f"domain_profile_{repo_name}.json"
+            domain_out = output_paths['utils'] / domain_filename
+            if domain_out.exists():
+                try:
+                    domain_profile = load_domain_profile(domain_out)
+                    logger.debug("Loaded domain profile from %s", domain_out)
+                except Exception:
+                    pass
+
+        domain_context = domain_profile.model_dump_json(indent=2) if domain_profile else ""
+
+        release_template_path = resolve_cli_or_absolute(config["templates"]["release"])
+        logger.debug("Release template: %s", release_template_path)
+        parsed_release = parse_template(release_template_path.read_text(encoding="utf-8"))
+
+        version_label = build_version_label(args.version, args.revision_range, config["release"])
+        logger.debug("Release version: %s", version_label)
+
+        # Fase C: Generate fields in parallel
+        logger.debug("Generating PR and release fields in parallel...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            pr_fields_future = executor.submit(
+                build_fields_from_template,
+                parsed_pr, pr_summaries, pr_changes_md, config, client,
+                template_type="pr",
+                alerts=alerts_md,
+            )
+            release_fields_future = executor.submit(
+                build_fields_from_template,
+                parsed_release, release_summaries, release_changes_md, config, client,
+                template_type="release",
+                domain_context=domain_context,
+                version=version_label,
+            )
+            try:
+                pr_fields = pr_fields_future.result()
+            except Exception as exc:
+                raise SystemExit(f"Falha ao gerar campos de PR com LLM: {exc}") from exc
+            try:
+                release_fields = release_fields_future.result()
+            except Exception as exc:
+                raise SystemExit(f"Falha ao gerar campos de release com LLM: {exc}") from exc
+
+        # Fase D: Render and export (fast, no LLM)
+        pr_title = pr_fields.get("title", "untitled")
+        pr_text = render_from_parsed_template(parsed_pr, pr_fields, title=pr_title)
+        path = export_pr(pr_text, output_paths['prs'], pr_title)
+        logger.debug("PR exported to %s", path)
+
+        release_date = datetime.now().strftime(config["release"]["date_format"])
+        release_text = render_from_parsed_template(
+            parsed_release, release_fields,
+            title=f"Notas de Versao \u2014 {version_label}",
+            subtitle=f"**Data de lancamento**: {release_date}",
+        )
+        path = export_release(release_text, output_paths['releases'], version_label)
+        logger.debug("Release exported to %s", path)
+
+    elif args.generate == "pr":
         logger.debug("Generating PR summaries...")
-        pr_summaries = _generate_summaries_for_output(grouped_commits, config, llm_model, "pr", args.no_llm)
+        pr_summaries = _generate_summaries_for_output(grouped_commits, config, client, "pr", args.no_llm)
 
-    if args.generate in {"release", "both"}:
-        logger.debug("Generating release summaries...")
-        release_summaries = _generate_summaries_for_output(grouped_commits, config, llm_model, "release", args.no_llm)
-
-    if args.generate in {"pr", "both"}:
         logger.debug("Building PR output...")
         pr_changes_md = render_changes_by_type_from_summaries(grouped_commits, pr_summaries, config)
 
@@ -185,12 +264,11 @@ def run_workflow(args) -> int:
 
         pr_template_path = resolve_cli_or_absolute(config["templates"]["pr"])
         logger.debug("PR template: %s", pr_template_path)
-        pr_template_text = pr_template_path.read_text(encoding="utf-8")
-        parsed_pr = parse_template(pr_template_text)
+        parsed_pr = parse_template(pr_template_path.read_text(encoding="utf-8"))
 
         try:
             pr_fields = build_fields_from_template(
-                parsed_pr, pr_summaries, pr_changes_md, config, llm_model,
+                parsed_pr, pr_summaries, pr_changes_md, config, client,
                 template_type="pr",
                 alerts=alerts_md,
             )
@@ -198,14 +276,14 @@ def run_workflow(args) -> int:
             raise SystemExit(f"Falha ao gerar campos de PR com LLM: {exc}") from exc
 
         pr_title = pr_fields.get("title", "untitled")
-        pr_text = render_from_parsed_template(
-            parsed_pr, pr_fields,
-            title=pr_title,
-        )
+        pr_text = render_from_parsed_template(parsed_pr, pr_fields, title=pr_title)
         path = export_pr(pr_text, output_paths['prs'], pr_title)
         logger.debug("PR exported to %s", path)
 
-    if args.generate in {"release", "both"}:
+    elif args.generate == "release":
+        logger.debug("Generating release summaries...")
+        release_summaries = _generate_summaries_for_output(grouped_commits, config, client, "release", args.no_llm)
+
         logger.debug("Building release output...")
         release_changes_md = render_changes_by_type_from_summaries(grouped_commits, release_summaries, config)
 
@@ -223,14 +301,13 @@ def run_workflow(args) -> int:
 
         release_template_path = resolve_cli_or_absolute(config["templates"]["release"])
         logger.debug("Release template: %s", release_template_path)
-        release_template_text = release_template_path.read_text(encoding="utf-8")
-        parsed_release = parse_template(release_template_text)
+        parsed_release = parse_template(release_template_path.read_text(encoding="utf-8"))
 
         version_label = build_version_label(args.version, args.revision_range, config["release"])
         logger.debug("Release version: %s", version_label)
         try:
             release_fields = build_fields_from_template(
-                parsed_release, release_summaries, release_changes_md, config, llm_model,
+                parsed_release, release_summaries, release_changes_md, config, client,
                 template_type="release",
                 domain_context=domain_context,
                 version=version_label,

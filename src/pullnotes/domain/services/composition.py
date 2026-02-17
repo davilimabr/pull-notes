@@ -12,6 +12,7 @@ from .aggregation import build_language_hint, group_commits_by_type
 
 if TYPE_CHECKING:
     from .template_parser import ParsedTemplate
+    from ...adapters.llm_structured import StructuredLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ def build_fields_from_template(
     grouped_summaries: Dict[str, str],
     changes_by_type: str,
     config: Dict,
-    model: str,
+    client: "StructuredLLMClient",
     *,
     template_type: str = "pr",
     domain_context: str = "",
@@ -116,7 +117,6 @@ def build_fields_from_template(
     4. Retorna dict com campos preenchidos
     """
     from .dynamic_fields import build_dynamic_schema, build_dynamic_prompt
-    from ...adapters.llm_structured import StructuredLLMClient
 
     dynamic_sections = parsed_template.dynamic_sections
     if not dynamic_sections:
@@ -144,15 +144,9 @@ def build_fields_from_template(
         alerts=alerts,
     )
 
-    client = StructuredLLMClient(
-        model=model,
-        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
-        max_retries=config.get("llm_max_retries", 3),
-    )
-
     logger.debug(
         "Generating %s fields from template (%d dynamic sections, model=%s)",
-        template_type, len(dynamic_sections), model,
+        template_type, len(dynamic_sections), client.model,
     )
     result = client.invoke_structured(prompt, schema)
     save_prompt(prompt, f"{template_type}_fields", result.model_dump_json(indent=2))

@@ -238,7 +238,9 @@ def summarize_commit_group(
     result = client.invoke_structured(prompt, CommitGroupSummary)
 
     # Save prompt for debugging
-    response_text = "\n".join(f"- {point}" for point in result.summary_points)
+    response_text = "\n".join(
+        f"- {point.lstrip('- ')}" for point in result.summary_points
+    )
     save_prompt(prompt, f"commit_group_{commit_type}_{output_type}", response_text)
 
     logger.debug("Group '%s' summarized: %d bullet points", label, len(result.summary_points))

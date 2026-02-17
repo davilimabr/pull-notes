@@ -25,10 +25,10 @@ Each field corresponds to a section in the output document. The description expl
 {{changes_by_type}}
 
 ## CRITICAL RULES:
-1. You MUST distribute ALL the changes listed above across the appropriate fields. Do NOT leave fields empty if there are changes that belong there.
-2. When including changes in a field, preserve the grouping headers (### Features, ### Refactor, etc.) as sub-sections.
-3. Each change item from the list above must appear in exactly one field — choose the most appropriate one.
-4. If a change does not fit neatly into any specific field, place it in the most general/relevant field.
+1. The detailed changes listed above are for CONTEXT ONLY — they are already placed in a dedicated "Changes" section automatically. Do NOT copy or repeat them in the fields you generate.
+2. Use the commit summaries and change details to INFORM your writing (e.g., to describe the problem/solution, identify the type of change, assess risks), but do NOT list the individual changes again.
+3. Each field should contain original, synthesized content appropriate for that section — not a copy of the changes list.
+4. Do NOT leave fields empty if there is relevant information in the commits for that field.
 
 {{alerts_block}}
 

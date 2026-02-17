@@ -53,6 +53,7 @@ def build_dynamic_prompt(
     version: str = "",
     title_instruction: str = "",
     alerts: str = "",
+    changes_key: str = "",
 ) -> str:
     """Monta o prompt dinamicamente a partir das secoes do template.
 
@@ -61,6 +62,9 @@ def build_dynamic_prompt(
     - Descricao de cada secao dinamica com sua instrucao
     - Commits sumarizados e changes_by_type como contexto
     - Formato de saida esperado (JSON com as keys)
+
+    The ``changes_key`` section is excluded from the fields to generate because
+    its content is injected directly from ``changes_by_type``.
     """
     language_hint = build_language_hint(language)
 
@@ -77,6 +81,9 @@ def build_dynamic_prompt(
 
     for section in sections:
         if section.is_static:
+            continue
+        # Skip changes section — filled directly, not by LLM
+        if changes_key and section.key == changes_key:
             continue
         dynamic_keys.append(section.key)
         sections_desc.append(

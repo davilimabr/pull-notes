@@ -16,6 +16,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Keys recognised as the "changes" section after slugification.
+_CHANGES_KEYS = {"alteracoes", "changes"}
+
+# Heading to use when the template has no changes section (language -> heading).
+_CHANGES_HEADING_BY_LANG = {
+    "pt": "Alterações",
+    "en": "Changes",
+}
+
+
+def _detect_changes_key(sections: list) -> str | None:
+    """Return the key of the changes section if one exists, else None."""
+    for s in sections:
+        if s.key in _CHANGES_KEYS:
+            return s.key
+    return None
+
+
+def _changes_heading_for_language(language: str) -> str:
+    """Return the appropriate heading based on the configured language."""
+    lang_prefix = language.split("-")[0].lower() if language else "en"
+    return _CHANGES_HEADING_BY_LANG.get(lang_prefix, _CHANGES_HEADING_BY_LANG["en"])
+
 
 def build_version_label(version_override: str, revision_range: str | None, release_cfg: Dict) -> str:
     """Build version label from override or template/date."""
@@ -97,6 +120,32 @@ def render_changes_by_type_from_summaries(
     return "\n".join(lines).strip()
 
 
+def _ensure_changes_section(parsed_template: "ParsedTemplate", language: str) -> str:
+    """Guarantee the parsed template contains a changes section.
+
+    If no section with key ``alteracoes`` or ``changes`` exists, a new dynamic
+    section is appended.  Returns the key of the changes section.
+    """
+    from .template_parser import TemplateSection, _slugify
+
+    changes_key = _detect_changes_key(parsed_template.sections)
+    if changes_key:
+        return changes_key
+
+    heading = _changes_heading_for_language(language)
+    key = _slugify(heading)
+    new_section = TemplateSection(
+        heading=heading,
+        key=key,
+        body="Liste as principais alteracoes, agrupadas por tipo.",
+        is_static=False,
+        level=2,
+    )
+    parsed_template.sections.append(new_section)
+    logger.info("Created missing changes section '%s' (key=%s)", heading, key)
+    return key
+
+
 def build_fields_from_template(
     parsed_template: "ParsedTemplate",
     grouped_summaries: Dict[str, str],
@@ -111,17 +160,24 @@ def build_fields_from_template(
 ) -> Dict[str, str]:
     """Gera campos dinamicamente a partir do template parseado.
 
-    1. Gera schema Pydantic dinamico
-    2. Monta prompt com instrucoes das secoes
-    3. Chama LLM com structured output
-    4. Retorna dict com campos preenchidos
+    1. Garante que existe uma secao de alteracoes no template
+    2. Gera schema Pydantic dinamico (excluindo a secao de alteracoes)
+    3. Monta prompt com instrucoes das secoes
+    4. Chama LLM com structured output
+    5. Injeta changes_by_type diretamente na secao de alteracoes
+    6. Retorna dict com campos preenchidos
     """
     from .dynamic_fields import build_dynamic_schema, build_dynamic_prompt
 
-    dynamic_sections = parsed_template.dynamic_sections
-    if not dynamic_sections:
-        logger.debug("No dynamic sections in template, returning empty fields")
-        return {}
+    # 1. Ensure changes section exists
+    changes_key = _ensure_changes_section(parsed_template, config["language"])
+
+    # Exclude the changes section from LLM generation — we fill it directly
+    dynamic_sections = [s for s in parsed_template.dynamic_sections if s.key != changes_key]
+
+    if not dynamic_sections and not (template_type == "pr"):
+        logger.debug("No dynamic sections in template besides changes, returning changes only")
+        return {changes_key: changes_by_type.strip()} if changes_by_type.strip() else {}
 
     include_title = template_type == "pr"
     schema = build_dynamic_schema(
@@ -142,6 +198,7 @@ def build_fields_from_template(
         version=version,
         title_instruction=parsed_template.title_instruction,
         alerts=alerts,
+        changes_key=changes_key,
     )
 
     logger.debug(
@@ -152,51 +209,11 @@ def build_fields_from_template(
     save_prompt(prompt, f"{template_type}_fields", result.model_dump_json(indent=2))
     fields = result.model_dump()
 
-    # Fallback: ensure changes_by_type is present in at least one section
+    # 5. Always inject changes_by_type into the changes section
     if changes_by_type.strip():
-        _ensure_changes_included(fields, dynamic_sections, changes_by_type)
+        fields[changes_key] = changes_by_type.strip()
 
     return fields
-
-
-def _ensure_changes_included(
-    fields: Dict[str, str],
-    dynamic_sections: list,
-    changes_by_type: str,
-) -> None:
-    """Ensure changes_by_type content is present in the fields.
-
-    If no dynamic field contains substantial content from changes_by_type,
-    inject it into the first dynamic section (most relevant for changes).
-    """
-    # Check if any field already has substantial content (more than just a summary)
-    non_empty_fields = {k: v for k, v in fields.items() if v.strip() and k != "title"}
-    if not non_empty_fields:
-        # All fields empty — inject changes into first dynamic section
-        if dynamic_sections:
-            target_key = dynamic_sections[0].key
-            fields[target_key] = changes_by_type
-        return
-
-    # Check if changes are distributed: count fields with content >= 3 lines
-    fields_with_content = sum(
-        1 for v in non_empty_fields.values()
-        if len(v.strip().splitlines()) >= 3
-    )
-    if fields_with_content >= 2:
-        # LLM distributed content across multiple fields — trust it
-        return
-
-    # Only one field has substantial content — the LLM probably put everything
-    # in one place. Check if the first dynamic section has the grouped changes.
-    first_key = dynamic_sections[0].key
-    first_content = fields.get(first_key, "")
-    if "###" not in first_content and changes_by_type.strip():
-        # Missing type headers — append changes_by_type to preserve grouping
-        if first_content.strip():
-            fields[first_key] = first_content.strip() + "\n\n" + changes_by_type
-        else:
-            fields[first_key] = changes_by_type
 
 
 def render_from_parsed_template(

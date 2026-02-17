@@ -54,7 +54,7 @@ class TestParseTemplatePR:
 
     def test_extracts_title(self, pr_template):
         parsed = parse_template(pr_template)
-        assert parsed.title_instruction == "Titulo do Pull Request"
+        assert parsed.title_instruction == "Titulo"
 
     def test_extracts_correct_number_of_sections(self, pr_template):
         parsed = parse_template(pr_template)
@@ -66,40 +66,38 @@ class TestParseTemplatePR:
         assert headings == [
             "Descricao",
             "Tipo de Alteracao",
-            "Alteracoes Realizadas",
+            "Alterações",
             "Riscos e Impactos",
-            "Plano de Testes",
-            "Checklist",
+            "Testes",
+            "Observacoes",
         ]
 
     def test_static_sections(self, pr_template):
         parsed = parse_template(pr_template)
         static_names = [s.heading for s in parsed.static_sections]
-        assert "Tipo de Alteracao" in static_names
-        assert "Plano de Testes" in static_names
-        assert "Checklist" in static_names
+        assert static_names == []
 
     def test_dynamic_sections(self, pr_template):
         parsed = parse_template(pr_template)
         dynamic_names = [s.heading for s in parsed.dynamic_sections]
         assert "Descricao" in dynamic_names
-        assert "Alteracoes Realizadas" in dynamic_names
+        assert "Alterações" in dynamic_names
         assert "Riscos e Impactos" in dynamic_names
 
     def test_static_count(self, pr_template):
         parsed = parse_template(pr_template)
-        assert len(parsed.static_sections) == 3
+        assert len(parsed.static_sections) == 0
 
     def test_dynamic_count(self, pr_template):
         parsed = parse_template(pr_template)
-        assert len(parsed.dynamic_sections) == 3
+        assert len(parsed.dynamic_sections) == 6
 
     def test_section_keys_are_slugified(self, pr_template):
         parsed = parse_template(pr_template)
         keys = [s.key for s in parsed.sections]
         assert "descricao" in keys
         assert "tipo_de_alteracao" in keys
-        assert "alteracoes_realizadas" in keys
+        assert "alteracoes" in keys
         assert "riscos_e_impactos" in keys
 
     def test_section_body_not_empty(self, pr_template):

@@ -205,8 +205,20 @@ class TestBuildDynamicPrompt:
         )
         assert "Commits fora do padrao" not in prompt
 
-    def test_changes_must_be_included_rule(self, sample_dynamic_sections):
+    def test_changes_context_only_rule(self, sample_dynamic_sections):
         prompt = build_dynamic_prompt(
             sample_dynamic_sections, "en", "summaries", "changes"
         )
-        assert "MUST distribute ALL" in prompt
+        assert "CONTEXT ONLY" in prompt
+
+    def test_excludes_changes_key_from_fields(self):
+        sections = [
+            TemplateSection(heading="Descricao", key="descricao", body="Desc.", is_static=False),
+            TemplateSection(heading="Alterações", key="alteracoes", body="Changes.", is_static=False),
+        ]
+        prompt = build_dynamic_prompt(
+            sections, "pt-br", "summaries", "changes", changes_key="alteracoes"
+        )
+        # alteracoes should not appear as a field to generate
+        assert '"alteracoes": "conteudo gerado"' not in prompt
+        assert '"descricao": "conteudo gerado"' in prompt

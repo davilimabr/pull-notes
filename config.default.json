@@ -1,14 +1,14 @@
 {
   "commit_types": {
-    "feat": { "label": "Features", "patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"] },
-    "fix": { "label": "Fix", "patterns": ["\\bfix\\b", "\\bbugfix\\b"] },
-    "docs": { "label": "Docs", "patterns": ["\\bdocs\\b"] },
-    "refactor": { "label": "Refactor", "patterns": ["\\brefactor\\b"] },
+    "feat": { "label": "Funcionalidades", "patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"] },
+    "fix": { "label": "Ajustes", "patterns": ["\\bfix\\b", "\\bbugfix\\b"] },
+    "docs": { "label": "Documentação", "patterns": ["\\bdocs\\b"] },
+    "refactor": { "label": "Refatoração", "patterns": ["\\brefactor\\b"] },
     "perf": { "label": "Performance", "patterns": ["\\bperf\\b"] },
-    "test": { "label": "Test", "patterns": ["\\btest\\b", "\\btests\\b"] },
+    "test": { "label": "Testes", "patterns": ["\\btest\\b", "\\btests\\b"] },
     "build": { "label": "Build", "patterns": ["\\bbuild\\b"] },
     "ci": { "label": "CI", "patterns": ["\\bci\\b"] },
-    "style": { "label": "Style", "patterns": ["\\bstyle\\b"] },
+    "style": { "label": "Estilo", "patterns": ["\\bstyle\\b"] },
     "chore": { "label": "chore", "patterns": ["\\bchore\\b"] },
     "revert": { "label": "revert", "patterns": ["\\brevert\\b"] }
   },

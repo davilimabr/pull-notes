@@ -209,4 +209,4 @@ class TestBuildDynamicPrompt:
         prompt = build_dynamic_prompt(
             sample_dynamic_sections, "en", "summaries", "changes"
         )
-        assert "MUST be included" in prompt
+        assert "MUST distribute ALL" in prompt

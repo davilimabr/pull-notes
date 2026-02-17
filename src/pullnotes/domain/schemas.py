@@ -37,55 +37,6 @@ class ArtifactKind(str, Enum):
     CONFIG = "config"
 
 
-# === Schemas para Composicao (PR/Release) ===
-
-class PRFields(BaseModel):
-    """Schema for PR description fields."""
-
-    title: str = Field(
-        ...,
-        description="Concise PR title summarizing the changes",
-        min_length=5,
-        max_length=100
-    )
-    summary: str = Field(
-        ...,
-        description="Brief description of what was changed and why"
-    )
-    risks: str = Field(
-        default="",
-        description="Potential risks or impacts of the changes"
-    )
-    testing: str = Field(
-        default="",
-        description="Testing performed or recommended"
-    )
-
-
-class ReleaseFields(BaseModel):
-    """Schema for Release notes fields."""
-
-    executive_summary: str = Field(
-        ...,
-        description="Brief overview of this release for stakeholders"
-    )
-    highlights: str = Field(
-        ...,
-        description="Key features and improvements in bullet points"
-    )
-    migration_notes: str = Field(
-        default="",
-        description="Steps needed to upgrade from previous version"
-    )
-    known_issues: str = Field(
-        default="",
-        description="Any known problems or limitations"
-    )
-    internal_notes: str = Field(
-        default="",
-        description="Technical details for the development team"
-    )
-
 
 class CommitGroupSummary(BaseModel):
     """Schema for commit group summaries."""

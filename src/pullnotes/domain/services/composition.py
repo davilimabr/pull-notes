@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime
 from typing import Dict, List, Tuple, TYPE_CHECKING
 
 from ...adapters.prompt_debug import save_prompt
-from ...prompts import load_prompt
 from ..models import Commit
 from .aggregation import build_language_hint, group_commits_by_type
 
 if TYPE_CHECKING:
-    from ..schemas import PRFields, ReleaseFields
     from .template_parser import ParsedTemplate
 
 logger = logging.getLogger(__name__)
@@ -52,91 +49,6 @@ def _format_grouped_summaries(grouped_summaries: Dict[str, str], config: Dict) -
         summaries_lines.append("")
 
     return "\n".join(summaries_lines).strip()
-
-
-def build_pr_fields(grouped_summaries: Dict[str, str], config: Dict, model: str) -> "PRFields":
-    """Build PR fields using grouped commit summaries.
-
-    Args:
-        grouped_summaries: Dictionary mapping change_type to formatted summary text (bullet points)
-        config: Configuration dictionary
-        model: LLM model to use
-
-    Returns:
-        PRFields with validated PR data
-    """
-    from ..schemas import PRFields
-    from ...adapters.llm_structured import StructuredLLMClient
-
-    client = StructuredLLMClient(
-        model=model,
-        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
-        max_retries=config.get("llm_max_retries", 3),
-    )
-
-    formatted_summaries = _format_grouped_summaries(grouped_summaries, config)
-
-    prompt = load_prompt(
-        "pr_fields",
-        {
-            "language_hint": build_language_hint(config["language"]),
-            "commit_summaries": formatted_summaries,
-        },
-    )
-
-    result = client.invoke_structured(prompt, PRFields)
-    save_prompt(prompt, "pr_fields", result.model_dump_json(indent=2))
-    return result
-
-
-def build_release_fields(
-    grouped_summaries: Dict[str, str], domain_context: str, config: Dict, model: str, version: str
-) -> "ReleaseFields":
-    """Build release fields using grouped commit summaries and domain context.
-
-    Args:
-        grouped_summaries: Dictionary mapping change_type to formatted summary text (bullet points)
-        domain_context: Domain context (XML string or JSON string)
-        config: Configuration dictionary
-        model: LLM model to use
-        version: Release version label
-
-    Returns:
-        ReleaseFields with validated release data
-    """
-    from ..schemas import ReleaseFields
-    from ...adapters.llm_structured import StructuredLLMClient
-
-    client = StructuredLLMClient(
-        model=model,
-        timeout_seconds=config.get("llm_timeout_seconds", 600.0),
-        max_retries=config.get("llm_max_retries", 3),
-    )
-
-    formatted_summaries = _format_grouped_summaries(grouped_summaries, config)
-
-    prompt = load_prompt(
-        "release_fields",
-        {
-            "language_hint": build_language_hint(config["language"]),
-            "release_version": version,
-            "domain_context": domain_context[:6000],  # Limit size
-            "commit_summaries": formatted_summaries,
-        },
-    )
-
-    result = client.invoke_structured(prompt, ReleaseFields)
-    save_prompt(prompt, "release_fields", result.model_dump_json(indent=2))
-    return result
-
-
-def render_template(template_text: str, values: Dict[str, str]) -> str:
-    """Render simple placeholder template."""
-    out = template_text
-    for key, value in values.items():
-        out = out.replace(f"{{{{{key}}}}}", value)
-    out = re.sub(r"{{\s*[\w_]+\s*}}", "", out)
-    return out.strip() + "\n"
 
 
 def render_changes_by_type_from_summaries(
@@ -245,8 +157,52 @@ def build_fields_from_template(
     result = client.invoke_structured(prompt, schema)
     save_prompt(prompt, f"{template_type}_fields", result.model_dump_json(indent=2))
     fields = result.model_dump()
-    logger.debug("Generated fields: %s", list(fields.keys()))
+
+    # Fallback: ensure changes_by_type is present in at least one section
+    if changes_by_type.strip():
+        _ensure_changes_included(fields, dynamic_sections, changes_by_type)
+
     return fields
+
+
+def _ensure_changes_included(
+    fields: Dict[str, str],
+    dynamic_sections: list,
+    changes_by_type: str,
+) -> None:
+    """Ensure changes_by_type content is present in the fields.
+
+    If no dynamic field contains substantial content from changes_by_type,
+    inject it into the first dynamic section (most relevant for changes).
+    """
+    # Check if any field already has substantial content (more than just a summary)
+    non_empty_fields = {k: v for k, v in fields.items() if v.strip() and k != "title"}
+    if not non_empty_fields:
+        # All fields empty — inject changes into first dynamic section
+        if dynamic_sections:
+            target_key = dynamic_sections[0].key
+            fields[target_key] = changes_by_type
+        return
+
+    # Check if changes are distributed: count fields with content >= 3 lines
+    fields_with_content = sum(
+        1 for v in non_empty_fields.values()
+        if len(v.strip().splitlines()) >= 3
+    )
+    if fields_with_content >= 2:
+        # LLM distributed content across multiple fields — trust it
+        return
+
+    # Only one field has substantial content — the LLM probably put everything
+    # in one place. Check if the first dynamic section has the grouped changes.
+    first_key = dynamic_sections[0].key
+    first_content = fields.get(first_key, "")
+    if "###" not in first_content and changes_by_type.strip():
+        # Missing type headers — append changes_by_type to preserve grouping
+        if first_content.strip():
+            fields[first_key] = first_content.strip() + "\n\n" + changes_by_type
+        else:
+            fields[first_key] = changes_by_type
 
 
 def render_from_parsed_template(

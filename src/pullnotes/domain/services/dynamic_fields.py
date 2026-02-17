@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, create_model
 
 from .template_parser import TemplateSection
 from .aggregation import build_language_hint
+from ...prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -97,40 +98,21 @@ def build_dynamic_prompt(
     if version:
         extra_context += f"\nRelease version: {version}\n"
 
-    prompt = f"""You are a careful assistant generating {template_type} descriptions.
-Based on the commit summaries and change details below, produce a JSON object with the fields described.
-
-{language_hint}
-
-## Anti-hallucination rules:
-- Use ONLY information explicitly present in the commit summaries and change details below.
-- Do NOT invent, assume, or infer details not stated in the data.
-- For fields where information is insufficient, return an empty string.
-- Prefer empty strings over fabricated content.
-- Do NOT add context from your own knowledge about common risks, best practices, or typical patterns.
-
-## Fields to generate:
-Each field corresponds to a section in the output document. The description explains what content is expected.
-
-{sections_block}
-
-## Context data:
-{extra_context}
-### Commit summaries:
-{commit_summaries}
-
-### Detailed changes by type:
-{changes_by_type}
-
-IMPORTANT RULE: The changes listed above MUST be included in the final document. Decide which section is most appropriate for them and incorporate them there. If no section is a natural fit, include them in the most relevant section.
-"""
-
+    # Bloco de alertas (commits fora do padrao)
+    alerts_block = ""
     if alerts:
-        prompt += f"\n### Commits fora do padrao convencional:\n{alerts}\n"
+        alerts_block = f"### Commits fora do padrao convencional:\n{alerts}"
 
-    prompt += f"""
-IMPORTANT: Return ONLY a JSON object with this exact structure (do not include any other text):
-{json_example}
-"""
+    prompt = load_prompt("dynamic_fields", {
+        "template_type": template_type,
+        "language_hint": language_hint,
+        "sections_block": sections_block,
+        "extra_context": extra_context,
+        "commit_summaries": commit_summaries,
+        "changes_by_type": changes_by_type,
+        "alerts_block": alerts_block,
+        "json_example": json_example,
+    })
+
     logger.debug("Dynamic prompt built for %s (%d keys, %d chars)", template_type, len(dynamic_keys), len(prompt))
-    return prompt.strip()
+    return prompt

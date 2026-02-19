@@ -10,7 +10,7 @@ Este documento descreve as estruturas de dados utilizadas no projeto.
 
 ```python
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 @dataclass
 class Commit:
@@ -33,7 +33,7 @@ class Commit:
     files: List[str] = field(default_factory=list)  # Arquivos modificados
     additions: int = 0          # Total de linhas adicionadas
     deletions: int = 0          # Total de linhas removidas
-    diff: str = ""              # Diff bruto do commit
+    diff: str = ""              # Diff completo do commit
     diff_anchors: Optional[DiffAnchors] = None  # Ancoras semanticas extraidas
 
     # === Classificacao ===
@@ -53,43 +53,6 @@ class Commit:
         return self.sha[:7]
 ```
 
-### Diagrama de Campos
-
-```
-+------------------------------------------------------------------+
-|                            Commit                                 |
-+------------------------------------------------------------------+
-| IDENTIFICACAO                                                     |
-|   sha: str              "abc123def456789..."                     |
-|   short_sha: str        "abc123d" (property)                     |
-+------------------------------------------------------------------+
-| METADADOS GIT                                                     |
-|   author_name: str      "John Doe"                               |
-|   author_email: str     "john@example.com"                       |
-|   date: str             "2024-01-15T10:30:00-03:00"             |
-|   subject: str          "feat: add user authentication"          |
-|   body: str             "Detailed description..."                |
-+------------------------------------------------------------------+
-| METRICAS DE MUDANCA                                               |
-|   files: List[str]      ["src/auth.py", "src/models/user.py"]   |
-|   additions: int        150                                      |
-|   deletions: int        30                                       |
-|   diff: str             "+def login(): ..."                      |
-|   diff_anchors: DiffAnchors  (ancoras semanticas extraidas)      |
-+------------------------------------------------------------------+
-| CLASSIFICACAO                                                     |
-|   change_type: str      "feat"                                   |
-|   is_conventional: bool  True                                    |
-+------------------------------------------------------------------+
-| SCORING                                                           |
-|   importance_score: float  7.5                                   |
-|   importance_band: str     "high"                                |
-+------------------------------------------------------------------+
-| OUTPUT                                                            |
-|   summary: str          "Nova autenticacao JWT implementada..."  |
-+------------------------------------------------------------------+
-```
-
 ### Ciclo de Vida
 
 ```
@@ -97,7 +60,7 @@ class Commit:
    +-- sha, author_name, author_email, date, subject
    +-- files, additions, deletions (do numstat)
 
-2. ENRIQUECIMENTO (fetch_commit_details)
+2. ENRIQUECIMENTO (fetch_commit_details - paralelo)
    +-- body (git show -s --format=%B)
    +-- diff (git show --unified=3)
    +-- diff_anchors (extract_diff_anchors)
@@ -127,47 +90,21 @@ from pydantic import BaseModel, Field
 from typing import List, Literal
 
 class DiffKeyword(BaseModel):
-    """A keyword extracted from diff changes."""
-    text: str = Field(..., min_length=1, description="The keyword text")
-    change_type: Literal["added", "removed"] = Field(..., description="Whether keyword was added or removed")
-
+    """Keyword extraida de linhas do diff."""
+    text: str = Field(..., min_length=1)
+    change_type: Literal["added", "removed"]
 
 class DiffArtifact(BaseModel):
-    """An artifact detected in diff changes."""
-    kind: ArtifactKind = Field(..., description="Type of artifact")
-    name: str = Field(..., min_length=1, description="Name of the artifact")
-    change_type: Literal["added", "removed"] = Field(..., description="Whether artifact was added or removed")
-
+    """Artefato detectado no diff (endpoint, servico, etc.)."""
+    kind: ArtifactKind  # api_endpoint, service, db_table, event, etc.
+    name: str = Field(..., min_length=1)
+    change_type: Literal["added", "removed"]
 
 class DiffAnchors(BaseModel):
-    """Semantic anchors extracted from a commit diff."""
-    files_changed: List[str] = Field(default_factory=list, description="List of files modified")
-    keywords: List[DiffKeyword] = Field(default_factory=list, description="Keywords from diff content")
-    artifacts: List[DiffArtifact] = Field(default_factory=list, description="Artifacts detected in diff")
-```
-
-### Diagrama de Campos
-
-```
-+------------------------------------------------------------------+
-|                         DiffAnchors                               |
-+------------------------------------------------------------------+
-| files_changed: List[str]                                          |
-|   ["src/auth.py", "src/models/user.py"]                          |
-+------------------------------------------------------------------+
-| keywords: List[DiffKeyword]                                       |
-|   [                                                               |
-|     {"text": "login", "change_type": "added"},                   |
-|     {"text": "session", "change_type": "added"},                 |
-|     {"text": "old_auth", "change_type": "removed"}               |
-|   ]                                                               |
-+------------------------------------------------------------------+
-| artifacts: List[DiffArtifact]                                     |
-|   [                                                               |
-|     {"kind": "api_endpoint", "name": "POST /login", "change_type": "added"},
-|     {"kind": "service", "name": "AuthService", "change_type": "added"}
-|   ]                                                               |
-+------------------------------------------------------------------+
+    """Ancoras semanticas extraidas do diff de um commit."""
+    files_changed: List[str] = Field(default_factory=list)
+    keywords: List[DiffKeyword] = Field(default_factory=list)
+    artifacts: List[DiffArtifact] = Field(default_factory=list)
 ```
 
 ### Exemplo JSON
@@ -187,14 +124,100 @@ class DiffAnchors(BaseModel):
 }
 ```
 
-### Vantagens sobre Diff Truncado
+### Vantagens sobre Diff Bruto
 
-| Aspecto | Diff Truncado (antigo) | DiffAnchors (novo) |
-|---------|------------------------|---------------------|
-| Tamanho | 1000 bytes max | ~200-500 bytes |
-| Contexto | Cortado arbitrariamente | Semanticamente relevante |
-| Informacao | Codigo bruto | Keywords + Artifacts |
-| LLM | Pode alucinar | Mais preciso |
+| Aspecto | Diff Bruto | DiffAnchors |
+|---------|-----------|-------------|
+| Tamanho | Potencialmente grande | ~200-500 bytes |
+| Contexto | Codigo bruto | Semanticamente relevante |
+| Informacao | Linhas + / - | Keywords + Artifacts tipados |
+| LLM | Mais propenso a alucinacao | Contexto preciso e estruturado |
+
+---
+
+## CommitGroupSummary
+
+### Definicao
+
+**Arquivo:** `domain/schemas.py`
+
+```python
+class CommitGroupSummary(BaseModel):
+    """Resumo de um grupo de commits gerado pelo LLM."""
+    summary_points: List[str] = Field(min_length=1)
+```
+
+Retornado por cada chamada LLM de sumarizacao de grupo.
+
+---
+
+## ProjectProfile (Perfil de Dominio)
+
+### Definicao
+
+**Arquivo:** `domain/schemas.py`
+
+```python
+class ProjectProfile(BaseModel):
+    """Perfil completo do projeto gerado por LLM."""
+    project: ProjectType
+    domain: Domain
+    confidence: float = Field(ge=0.0, le=1.0)
+
+class ProjectType(BaseModel):
+    kind: ProjectKind  # cli, web_service, library, etc.
+    name: str
+    description: str
+
+class Domain(BaseModel):
+    summary: str
+    key_concepts: List[str]
+    domain_details: DomainDetails
+    domain_anchors: DomainAnchors
+
+class DomainDetails(BaseModel):
+    business_rules: List[str]
+    integrations: List[str]
+    target_users: List[str]
+
+class DomainAnchors(BaseModel):
+    keywords: List[Keyword] = []
+    artifacts: List[Artifact] = []
+```
+
+### Estrutura JSON Cacheada
+
+O perfil e salvo em `utils/domain_profile_{repo}.json`:
+
+```json
+{
+  "project": {
+    "kind": "cli",
+    "name": "meu-projeto",
+    "description": "Descricao do projeto"
+  },
+  "domain": {
+    "summary": "Descricao do dominio gerada pelo LLM",
+    "key_concepts": ["usuario", "pedido", "produto"],
+    "domain_details": {
+      "business_rules": ["Regra 1", "Regra 2"],
+      "integrations": ["Ollama API", "Git CLI"],
+      "target_users": ["Desenvolvedores"]
+    },
+    "domain_anchors": {
+      "keywords": [
+        {"text": "commit", "source": "README.md"},
+        {"text": "release", "source": "src/export.py"}
+      ],
+      "artifacts": [
+        {"kind": "service", "name": "DataCollection"},
+        {"kind": "service", "name": "Aggregation"}
+      ]
+    }
+  },
+  "confidence": 0.85
+}
+```
 
 ---
 
@@ -229,168 +252,72 @@ GIT_FORMAT = f"{COMMIT_MARKER}%n%H%x1f%an%x1f%ae%x1f%ad%x1f%s"
 
 ```python
 config = {
-    # Tipos de commit
     "commit_types": {
-        "feat": {"label": "Features", "patterns": [...]},
-        "fix": {"label": "Correcoes", "patterns": [...]},
+        "feat": {"label": "Funcionalidades", "patterns": [...]},
+        "fix": {"label": "Ajustes", "patterns": [...]},
         # ...
     },
-
-    # Pesos de importancia
+    "other_label": "Other",
     "importance": {
         "weight_lines": 0.02,
         "weight_files": 0.6,
         "keyword_bonus": {"breaking": 3.0, ...}
     },
-
-    # Faixas de importancia
     "importance_bands": [
         {"name": "low", "min": 0.0},
         {"name": "medium", "min": 3.0},
         # ...
     ],
-
-    # Dominio (para releases)
+    "diff": {"max_anchors_keywords": 10, "max_anchors_artifacts": 10},
     "domain": {
         "output_path": "domain_profile.json",
-        "model": "deepseek-r1:8b",
+        "model": "qwen2.5:7b",
         "max_total_bytes": 400000,
         "max_file_bytes": 40000
     },
-
-    # Output
     "output": {"dir": "./output"},
-
-    # LLM
-    "llm_model": "deepseek-r1:8b",
+    "llm_model": "qwen2.5:7b",
     "llm_timeout_seconds": 600,
-
-    # Templates
+    "llm_max_retries": 3,
+    "language": "pt-BR",
+    "alerts": {"none_text": "None."},
     "templates": {
         "pr": "templates/pr.md",
         "release": "templates/release.md"
     },
-
-    # Outros
-    "language": "pt-BR",
-    "diff": {"max_anchors_keywords": 10, "max_anchors_artifacts": 10},
     "release": {"version_template": "{revision_range}", "date_format": "%Y-%m-%d"}
 }
 ```
 
 ---
 
-## Estruturas de Saida
+## Estruturas de Template Parsing
 
-### PR Fields
+### TemplateSection e ParsedTemplate
 
-```python
-pr_fields = {
-    "title": "feat: Implementacao de autenticacao de usuarios",
-    "summary": "Este PR adiciona sistema completo de autenticacao...",
-    "risks": "- Mudanca no schema do banco de dados\n- Necessita migracao",
-    "testing": "1. Testar login com credenciais validas\n2. Testar logout..."
-}
-```
-
-### Release Fields
+**Arquivo:** `domain/services/template_parser.py`
 
 ```python
-release_fields = {
-    "executive_summary": "Esta versao traz melhorias significativas...",
-    "highlights": "- Nova dashboard de metricas\n- Suporte a exportacao PDF",
-    "migration_notes": "Execute `python migrate.py` antes de atualizar",
-    "known_issues": "- Bug #123 em dispositivos iOS antigos",
-    "internal_notes": "Revisar performance do endpoint /api/reports"
-}
-```
+@dataclass
+class TemplateSection:
+    heading: str        # Titulo da secao
+    key: str            # Chave slugificada (para injecao de valores)
+    body: str           # Instrucoes para o LLM preencher
+    is_static: bool     # True se contem checkboxes (conteudo estatico)
+    level: int          # Nivel do heading (1, 2, 3...)
 
-### Grouped Commits
+@dataclass
+class ParsedTemplate:
+    title_instruction: str
+    sections: List[TemplateSection]
 
-```python
-grouped_commits = [
-    ("feat", [commit1, commit2, commit3]),
-    ("fix", [commit4, commit5]),
-    ("docs", [commit6]),
-]
-```
+    @property
+    def dynamic_sections(self) -> List[TemplateSection]:
+        """Secoes que o LLM deve preencher"""
 
-### Grouped Summaries
-
-```python
-grouped_summaries = [
-    ("feat", "- Nova funcionalidade X\n- Melhoria em Y"),
-    ("fix", "- Correcao do bug Z\n- Ajuste no calculo de W"),
-]
-```
-
----
-
-## ProjectProfile (Domain Profile)
-
-### Definicao
-
-**Arquivo:** `domain/schemas.py`
-
-O perfil de dominio agora usa Pydantic para validacao estruturada:
-
-```python
-class ProjectProfile(BaseModel):
-    """Complete project profile generated by LLM."""
-    project: ProjectType
-    domain: Domain
-    confidence: float = Field(ge=0.0, le=1.0)
-
-class ProjectType(BaseModel):
-    """Project type classification."""
-    kind: ProjectKind
-    name: str
-    description: str
-
-class Domain(BaseModel):
-    """Domain information about the project."""
-    summary: str
-    key_concepts: List[str]
-    domain_details: DomainDetails
-    domain_anchors: DomainAnchors
-
-class DomainAnchors(BaseModel):
-    """Automatically extracted anchors from codebase."""
-    keywords: List[Keyword] = []
-    artifacts: List[Artifact] = []
-```
-
-### Estrutura JSON
-
-```json
-{
-  "project": {
-    "kind": "cli_tool",
-    "name": "meu-projeto",
-    "description": "Descricao do projeto"
-  },
-  "domain": {
-    "summary": "Descricao do dominio do projeto gerada pelo LLM",
-    "key_concepts": ["usuario", "pedido", "produto"],
-    "domain_details": {
-      "business_rules": ["Regra 1", "Regra 2"],
-      "integrations": ["API externa"],
-      "target_users": ["Desenvolvedores"]
-    },
-    "domain_anchors": {
-      "keywords": [
-        {"text": "usuario", "source": "README.md"},
-        {"text": "pedido", "source": "src/models.py"}
-      ],
-      "artifacts": [
-        {"kind": "api_endpoint", "name": "GET /api/users"},
-        {"kind": "db_table", "name": "users"},
-        {"kind": "service", "name": "UserService"}
-      ]
-    }
-  },
-  "confidence": 0.85
-}
+    @property
+    def static_sections(self) -> List[TemplateSection]:
+        """Secoes preservadas como estao (checkboxes)"""
 ```
 
 ---
@@ -416,46 +343,16 @@ convention_report = {
     "non_conventional_examples": [
         "Update readme",
         "Minor changes",
-        "WIP",
-        "Fix stuff",
-        "..."
+        "WIP"
     ]
 }
-```
-
-### Markdown Gerado
-
-```markdown
-# Relatorio de Conventional Commits
-
-## Resumo
-- Total de commits: 50
-- Commits convencionais: 45 (90.0%)
-- Commits nao-convencionais: 5 (10.0%)
-
-## Distribuicao por Tipo
-| Tipo | Quantidade |
-|------|------------|
-| feat | 20 |
-| fix | 15 |
-| docs | 5 |
-| refactor | 3 |
-| test | 2 |
-| other | 5 |
-
-## Commits Nao-Convencionais
-- Update readme
-- Minor changes
-- WIP
-- Fix stuff
-- ...
 ```
 
 ---
 
 ## Arquivos de Saida
 
-### commits.json
+### utils/commit.json
 
 ```json
 [
@@ -489,62 +386,21 @@ convention_report = {
 ]
 ```
 
-### pr.md
+### prs/pr_{titulo}.md
 
-```markdown
-# {{title}}
+Arquivo markdown gerado a partir do template `templates/pr.md`, com:
+- Titulo gerado pelo LLM
+- Secoes dinamicas preenchidas pelo LLM (descricao, riscos, testes, etc.)
+- Secao de alteracoes com mudancas agrupadas por tipo de commit
+- Secoes estaticas (checkboxes) preservadas do template original
 
-## Resumo
-{{summary}}
+### releases/release_{versao}.md
 
-## Mudancas por Tipo
-
-### Features
-- Nova funcionalidade X
-- Melhoria em Y
-
-### Correcoes
-- Correcao do bug Z
-
-## Riscos
-{{risks}}
-
-## Plano de Testes
-{{testing}}
-```
-
-### release.md
-
-```markdown
-# Release Notes v{{version}}
-
-**Data:** {{date}}
-
-## Resumo Executivo
-{{executive_summary}}
-
-## Destaques
-{{highlights}}
-
-## Mudancas
-
-### Features
-- Nova funcionalidade X
-- Melhoria em Y
-
-### Correcoes
-- Correcao do bug Z
-
-## Notas de Migracao
-{{migration_notes}}
-
-## Problemas Conhecidos
-{{known_issues}}
-
----
-*Notas Internas:*
-{{internal_notes}}
-```
+Arquivo markdown gerado a partir do template `templates/release.md`, com:
+- Titulo com versao e data
+- Secoes dinamicas preenchidas pelo LLM
+- Secao de alteracoes com mudancas agrupadas por tipo
+- Secoes estaticas preservadas do template
 
 ---
 
@@ -557,6 +413,14 @@ GIT LOG OUTPUT
 +--------------------+
 | parse_git_log()    |
 | String -> Commit[] |
++--------------------+
+     |
+     v
++--------------------+
+| fetch_details()    |  (paralelo via ThreadPoolExecutor)
+| Commit -> Commit   |
+| (+body, +diff,     |
+|  +diff_anchors)    |
 +--------------------+
      |
      v
@@ -581,22 +445,25 @@ GIT LOG OUTPUT
      |
      v
 +--------------------+
-| summarize_group()  |
+| summarize_group()  |  (paralelo: PR + Release)
 | Groups -> Summaries|
+| CommitGroupSummary |
 +--------------------+
      |
      v
 +--------------------+
-| build_*_fields()   |
-| Summaries -> JSON  |
+| build_*_fields()   |  (paralelo: PR + Release)
+| Summaries -> Fields|
+| (schema dinamico)  |
 +--------------------+
      |
      v
 +--------------------+
 | render_template()  |
-| JSON -> Markdown   |
+| Fields -> Markdown |
 +--------------------+
      |
      v
 OUTPUT FILES
+(prs/, releases/, utils/)
 ```

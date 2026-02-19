@@ -7,10 +7,10 @@ Este documento descreve as integracoes da ferramenta com sistemas externos.
 ```
 +-------------------+     +-------------------+     +-------------------+
 |    PullNotes      |---->|       Git         |     |      Ollama       |
-|                   |     |  (subprocess)     |     |    (HTTP API)     |
+|                   |     |  (subprocess)     |     |  (LangChain API)  |
 |   +----------+    |     +-------------------+     +-------------------+
-|   | Adapters |----+---->|      lxml         |
-|   +----------+    |     |   (XML/XSD)       |
+|   | Adapters |----+---->|    Filesystem     |
+|   +----------+    |     |   (pathlib)       |
 +-------------------+     +-------------------+
 ```
 
@@ -74,19 +74,6 @@ git log --date=iso-strict \
 - `%s` - Subject (primeira linha)
 - `--numstat` - Estatisticas de linhas (+/-)
 
-**Exemplo de Saida:**
-```
-__COMMIT__
-abc123def456789...
-John Doe
-john@example.com
-2024-01-15T10:30:00-03:00
-feat: add user authentication
-
-5	2	src/auth.py
-10	0	src/models/user.py
-```
-
 ### Tratamento de Erros
 
 ```python
@@ -106,125 +93,84 @@ except subprocess.CalledProcessError:
 
 ---
 
-## 2. Ollama (LLM)
+## 2. Ollama (LLM via LangChain)
 
 ### Descricao
 
-Ollama e usado para inferencia de LLM local, gerando sumarizacoes e campos dos documentos.
+Ollama e usado para inferencia de LLM local. A integracao utiliza **LangChain** com suporte a **saida estruturada** (Pydantic), garantindo respostas validas e tipadas.
 
 ### Adapter
 
-**Arquivo:** `adapters/http.py`
+**Arquivo:** `adapters/llm_structured.py`
 
 ```python
-import ollama
-import httpx
+from langchain_ollama import ChatOllama
+from langchain_core.output_parsers import PydanticOutputParser
 
-def call_ollama(
+def call_llm_structured(
     model: str,
     prompt: str,
-    timeout_seconds: float | None = None
-) -> str:
+    output_schema: Type[BaseModel],
+    timeout_seconds: float = 600,
+    max_retries: int = 3
+) -> BaseModel:
     """
-    Chama modelo LLM via Ollama.
+    Chama LLM via Ollama com saida validada por schema Pydantic.
+
+    Estrategia de duas etapas:
+    1. Tenta saida estruturada nativa (tool calling do modelo)
+    2. Fallback: PydanticOutputParser com instrucoes de formato
 
     Args:
-        model: Nome do modelo (ex: deepseek-r1:8b)
+        model: Nome do modelo (ex: qwen2.5:7b)
         prompt: Prompt completo
-        timeout_seconds: Timeout em segundos
+        output_schema: Classe Pydantic para validacao da resposta
+        timeout_seconds: Timeout da requisicao
+        max_retries: Tentativas em caso de falha
 
     Returns:
-        Resposta do modelo (texto limpo)
+        Instancia do output_schema validada
     """
-    timeout = httpx.Timeout(timeout_seconds or 10.0)
-    client = ollama.Client(timeout=timeout)
-
-    response = client.chat(
-        model=model,
-        messages=[{'role': 'user', 'content': prompt}],
-        options={'temperature': 0.2}
-    )
-
-    return response['message']['content'].strip()
 ```
 
 ### Configuracao
 
-**Parametros:**
 | Parametro | Valor | Descricao |
 |-----------|-------|-----------|
 | `temperature` | 0.2 | Baixa temperatura para respostas mais deterministicas |
-| `timeout` | configuravel | Padrao 10s, ajustavel via config |
+| `timeout` | configuravel | Padrao 600s (ajustavel via config) |
+| `max_retries` | configuravel | Padrao 3 (ajustavel via config) |
 
 **Modelos Recomendados:**
 | Modelo | Tamanho | Uso |
 |--------|---------|-----|
-| `deepseek-r1:8b` | ~5GB | Padrao, bom balanco |
-| `llama2:7b` | ~4GB | Alternativa leve |
+| `qwen2.5:7b` | ~5GB | Padrao, excelente para instrucoes estruturadas |
+| `llama3:8b` | ~5GB | Alternativa, bom desempenho geral |
 | `mistral:7b` | ~4GB | Bom para ingles |
-| `codellama:7b` | ~4GB | Melhor para codigo |
 
 ### Chamadas LLM no Sistema
 
-| Funcao | Prompt | Output |
-|--------|--------|--------|
-| `summarize_commit_group()` | commit_group_summary_*.txt | Bullets markdown |
-| `build_pr_fields()` | pr_fields.txt | JSON com campos |
-| `build_release_fields()` | release_fields.txt | JSON com campos |
-| `generate_domain_xml()` | domain_xml.txt | XML preenchido |
+| Servico | Prompt | Schema de Saida |
+|---------|--------|-----------------|
+| `summarize_commit_group()` | `commit_group_summary_pr.txt` | `CommitGroupSummary` |
+| `summarize_commit_group()` | `commit_group_summary_release.txt` | `CommitGroupSummary` |
+| `build_*_fields()` | `dynamic_fields.txt` | Schema dinamico por template |
+| `build_domain_profile()` | `domain_profile.txt` | `ProjectProfile` |
 
-### Exemplo de Prompt
+### Saida Estruturada
 
-```
-Voce e um assistente que gera resumos de commits.
-
-Tipo de mudanca: Features
-Idioma: pt-BR
-
-Commits:
----
-SHA: abc123
-Subject: feat: add user login
-Body: Implements JWT authentication
-Diff:
-+def login(user, password):
-+    token = generate_jwt(user)
-+    return token
----
-
-Gere um resumo em bullets das mudancas, focando no impacto para o usuario.
-```
-
-### Extracao de JSON
-
-Respostas LLM podem conter texto extra alem do JSON. A funcao `extract_json()` trata isso:
+Todas as chamadas LLM retornam objetos Pydantic validados, eliminando a necessidade de parsing manual de JSON:
 
 ```python
-def extract_json(raw_response: str) -> dict:
-    """
-    Extrai JSON de resposta LLM.
-    Trata casos como:
-    - JSON puro
-    - JSON em bloco de codigo
-    - Texto + JSON
-    """
-    # Tentar parse direto
-    try:
-        return json.loads(raw_response)
-    except json.JSONDecodeError:
-        pass
+# Exemplo de schema usado para sumarizacao
+class CommitGroupSummary(BaseModel):
+    summary_points: List[str] = Field(min_length=1)
 
-    # Procurar bloco de codigo
-    match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw_response)
-    if match:
-        return json.loads(match.group(1))
-
-    # Procurar objeto JSON no texto
-    match = re.search(r'\{[\s\S]*\}', raw_response)
-    if match:
-        return json.loads(match.group(0))
-
-    raise ValueError("No JSON found in response")
+# Exemplo de schema para perfil de dominio
+class ProjectProfile(BaseModel):
+    project: ProjectType
+    domain: Domain
+    confidence: float = Field(ge=0.0, le=1.0)
 ```
 
 ### Requisitos
@@ -245,7 +191,7 @@ def extract_json(raw_response: str) -> dict:
 
 3. **Modelo baixado:**
    ```bash
-   ollama pull deepseek-r1:8b
+   ollama pull qwen2.5:7b
    ```
 
 4. **Verificar:**
@@ -260,116 +206,13 @@ def extract_json(raw_response: str) -> dict:
 |----------|-------|---------|
 | Connection refused | Servidor parado | `ollama serve` |
 | Model not found | Modelo nao baixado | `ollama pull <model>` |
-| Timeout | Prompt muito longo | Aumentar timeout ou reduzir contexto |
+| Timeout | Prompt muito longo | Aumentar `llm_timeout_seconds` no config |
 | Out of memory | Modelo muito grande | Usar modelo menor |
+| Structured output falha | Modelo sem suporte a tool calling | Fallback automatico para PydanticOutputParser |
 
 ---
 
-## 3. lxml (XML/XSD)
-
-### Descricao
-
-A biblioteca lxml e usada para manipulacao de XML e validacao contra schemas XSD.
-
-### Uso no Projeto
-
-**Arquivo:** `adapters/domain_definition.py`
-
-```python
-from lxml import etree
-
-def validate_xml(xml_text: str, xsd_path: Path) -> bool:
-    """
-    Valida XML contra schema XSD.
-
-    Args:
-        xml_text: Conteudo XML
-        xsd_path: Path do arquivo XSD
-
-    Returns:
-        True se valido
-
-    Raises:
-        etree.DocumentInvalid: Se invalido
-    """
-    # Carregar schema
-    xsd_doc = etree.parse(str(xsd_path))
-    schema = etree.XMLSchema(xsd_doc)
-
-    # Parsear XML
-    xml_doc = etree.fromstring(xml_text.encode('utf-8'))
-
-    # Validar
-    schema.assertValid(xml_doc)
-    return True
-```
-
-### Estrutura do XML de Dominio
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<domainProfile>
-    <repositoryName>pull-notes</repositoryName>
-
-    <domain>
-        Ferramenta CLI para geracao automatica de
-        documentacao de releases e pull requests.
-    </domain>
-
-    <entities>
-        <entity name="Commit" description="Representa um commit Git"/>
-        <entity name="Config" description="Configuracao da ferramenta"/>
-    </entities>
-
-    <domainAnchors>
-        <keywords>commit, release, pr, llm, git</keywords>
-        <apiEndpoints>/api/ollama/chat</apiEndpoints>
-        <sqlTables></sqlTables>
-        <events></events>
-        <services>DataCollection, Aggregation, Composition</services>
-    </domainAnchors>
-</domainProfile>
-```
-
-### Schema XSD
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-    <xs:element name="domainProfile">
-        <xs:complexType>
-            <xs:sequence>
-                <xs:element name="repositoryName" type="xs:string"/>
-                <xs:element name="domain" type="xs:string"/>
-                <xs:element name="entities" minOccurs="0">
-                    <xs:complexType>
-                        <xs:sequence>
-                            <xs:element name="entity" maxOccurs="unbounded">
-                                <xs:complexType>
-                                    <xs:attribute name="name" type="xs:string"/>
-                                    <xs:attribute name="description" type="xs:string"/>
-                                </xs:complexType>
-                            </xs:element>
-                        </xs:sequence>
-                    </xs:complexType>
-                </xs:element>
-                <xs:element name="domainAnchors" minOccurs="0">
-                    <!-- ... -->
-                </xs:element>
-            </xs:sequence>
-        </xs:complexType>
-    </xs:element>
-</xs:schema>
-```
-
-### Requisitos
-
-- Python package `lxml` instalado
-- Arquivos XML/XSD sintaticamente corretos
-
----
-
-## 4. Filesystem
+## 3. Filesystem
 
 ### Descricao
 
@@ -410,7 +253,6 @@ def sanitize_filename(name: str) -> str:
 | Ler templates | composition.py | `Path.read_text()` |
 | Escrever JSON | export.py | `json.dump()` |
 | Escrever MD | export.py | `Path.write_text()` |
-| Escrever XML | domain_definition.py | `Path.write_text()` |
 
 ### Indexacao de Repositorio
 
@@ -429,24 +271,8 @@ INCLUDE_EXTENSIONS = {
 
 def iter_repo_files(repo_dir: Path, max_total_bytes: int):
     """
-    Itera arquivos do repositorio respeitando limites.
+    Itera arquivos do repositorio respeitando limites de bytes.
     """
-    total_bytes = 0
-
-    for path in repo_dir.rglob('*'):
-        if any(d in path.parts for d in IGNORE_DIRS):
-            continue
-        if path.suffix not in INCLUDE_EXTENSIONS:
-            continue
-        if not path.is_file():
-            continue
-
-        size = path.stat().st_size
-        if total_bytes + size > max_total_bytes:
-            break
-
-        total_bytes += size
-        yield path
 ```
 
 ---
@@ -463,29 +289,27 @@ def iter_repo_files(repo_dir: Path, max_total_bytes: int):
          v                         v                         v
 +--------+--------+     +----------+----------+     +--------+--------+
 |      GIT        |     |       OLLAMA        |     |    FILESYSTEM   |
-|   subprocess    |     |     HTTP/REST       |     |    pathlib      |
+|   subprocess    |     |   LangChain API     |     |    pathlib      |
 +-----------------+     +---------------------+     +-----------------+
-| - git log       |     | - /api/chat         |     | - read files    |
-| - git show      |     | - model inference   |     | - write files   |
+| - git log       |     | - ChatOllama        |     | - read files    |
+| - git show      |     | - structured output |     | - write files   |
 | - git config    |     | - temperature: 0.2  |     | - create dirs   |
 +-----------------+     +---------------------+     +-----------------+
          |                         |                         |
          v                         v                         v
 +--------+--------+     +----------+----------+     +--------+--------+
 |   Repositorio   |     |   Modelo Local      |     |   Config/       |
-|      Git        |     |  (deepseek, llama)  |     |   Templates/    |
-|                 |     |                     |     |   Output        |
+|      Git        |     |  (qwen2.5, llama3)  |     |   Templates/    |
+|                 |     |  Pydantic schemas   |     |   Output        |
 +-----------------+     +---------------------+     +-----------------+
 ```
 
 ## Resumo de Dependencias
 
-| Integracao | Biblioteca | Versao Min | Obrigatorio |
-|------------|------------|------------|-------------|
-| Git | subprocess (stdlib) | - | Sim |
-| Ollama | ollama (pypi) | - | Sim* |
-| XML | lxml (pypi) | - | Parcial** |
-| Filesystem | pathlib (stdlib) | - | Sim |
+| Integracao | Biblioteca | Obrigatorio |
+|------------|------------|-------------|
+| Git | subprocess (stdlib) | Sim |
+| Ollama | langchain-ollama, langchain-core | Sim* |
+| Filesystem | pathlib (stdlib) | Sim |
 
 \* Pode ser bypassed com `--no-llm`
-\** Apenas necessario para `--generate release`

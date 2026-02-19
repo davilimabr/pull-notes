@@ -13,72 +13,78 @@ O workflow principal e executado por `workflows/sync.py:run_workflow()`.
                               |
                               v
 +------------------------------------------------------------------+
-| 1. VALIDACAO E SETUP                                             |
+| FASE 0: SETUP                                                    |
 |    - Resolver paths (repo, config, output)                       |
 |    - Carregar configuracao JSON                                  |
 |    - Validar campos obrigatorios                                 |
-|    - Criar diretorio de saida                                    |
+|    - Criar estrutura de diretorios de saida                      |
+|    - Configurar debug de prompts                                 |
 +------------------------------------------------------------------+
                               |
                               v
 +------------------------------------------------------------------+
-| 2. COLETA PARALELA (ThreadPoolExecutor)                          |
+| FASE A: COLETA PARALELA (ThreadPoolExecutor, 2 workers)          |
 |    +---------------------------+  +---------------------------+  |
-|    | get_commits()             |  | _prepare_domain_text()    |  |
-|    | - git log                 |  | - build_domain_profile()  |  |
-|    | - parse commits           |  | - generate_domain_xml()   |  |
-|    | - fetch body/diff         |  | (apenas se release)       |  |
-|    +---------------------------+  +---------------------------+  |
-+------------------------------------------------------------------+
-                              |
-                              v
-+------------------------------------------------------------------+
-| 3. CLASSIFICACAO                                                 |
-|    - Para cada commit:                                           |
-|      - classify_commit(subject, patterns)                        |
-|      - Atribuir change_type (feat, fix, docs, etc.)             |
-|      - Marcar is_conventional                                    |
-+------------------------------------------------------------------+
-                              |
-                              v
-+------------------------------------------------------------------+
-| 4. SCORING                                                       |
-|    - Para cada commit:                                           |
-|      - compute_importance(commit, weights)                       |
-|      - Calcular importance_score                                 |
-|      - Atribuir importance_band                                  |
-+------------------------------------------------------------------+
-                              |
-                              v
-+------------------------------------------------------------------+
-| 5. GERACAO DE RELATORIOS BASE                                    |
-|    - build_convention_report(commits)                            |
-|    - export_convention_report() -> conventions.md                |
-|    - export_commits() -> commits.json                            |
-|    - group_commits_by_type()                                     |
-+------------------------------------------------------------------+
-                              |
-                              v
-+------------------------------------------------------------------+
-| 6. GERACAO CONDICIONAL                                           |
-|    +---------------------------+  +---------------------------+  |
-|    | SE generate="pr" ou       |  | SE generate="release" ou  |  |
-|    |    generate="both":       |  |    generate="both":       |  |
-|    |                           |  |                           |  |
-|    | - summarize_all_groups    |  | - summarize_all_groups    |  |
-|    |   (output_type="pr")      |  |   (output_type="release") |  |
-|    | - render_changes_by_type  |  | - render_changes_by_type  |  |
-|    | - build_pr_fields()       |  | - build_release_fields()  |  |
-|    | - render_template(pr.md)  |  | - render_template         |  |
-|    | - export -> pr.md         |  |   (release.md)            |  |
-|    +---------------------------+  | - export -> release.md    |  |
+|    | get_commits()             |  | build_domain_profile()    |  |
+|    | - git log                 |  | - indexar repositorio     |  |
+|    | - parse commits           |  | - extrair anchors         |  |
+|    | - fetch body/diff         |  | - chamar LLM (Pydantic)   |  |
+|    | - extract_diff_anchors    |  | - cache JSON              |  |
+|    +---------------------------+  | (apenas se release)       |  |
 |                                   +---------------------------+  |
 +------------------------------------------------------------------+
                               |
                               v
 +------------------------------------------------------------------+
-| 7. RETORNO                                                       |
-|    - return 0 (sucesso)                                          |
+| FASE B: CLASSIFICACAO E AGRUPAMENTO (sem LLM)                   |
+|    - classify_commit() para cada commit                          |
+|    - compute_importance() para cada commit                       |
+|    - build_convention_report()                                   |
+|    - export_commits() -> utils/commit.json                       |
+|    - export_convention_report() -> utils/conventions.md          |
+|    - group_commits_by_type()                                     |
++------------------------------------------------------------------+
+                              |
+                              v
++------------------------------------------------------------------+
+| FASE C: SUMARIZACAO PARALELA (ThreadPoolExecutor, 2 workers)     |
+|    +---------------------------+  +---------------------------+  |
+|    | summarize_all_groups()    |  | summarize_all_groups()    |  |
+|    | output_type="pr"          |  | output_type="release"     |  |
+|    | LLM: CommitGroupSummary   |  | LLM: CommitGroupSummary   |  |
+|    +---------------------------+  +---------------------------+  |
++------------------------------------------------------------------+
+                              |
+                              v
++------------------------------------------------------------------+
+| FASE D: PREPARACAO DE DADOS (sem LLM)                           |
+|    - render_changes_by_type_from_summaries() (PR e Release)      |
+|    - Construir lista de alertas (commits nao-convencionais)       |
++------------------------------------------------------------------+
+                              |
+                              v
++------------------------------------------------------------------+
+| FASE E: CAMPOS VIA LLM PARALELO (ThreadPoolExecutor, 2 workers)  |
+|    +---------------------------+  +---------------------------+  |
+|    | build_pr_fields()         |  | build_release_fields()    |  |
+|    | - parse template pr.md    |  | - parse template          |  |
+|    | - gerar schema dinamico   |  |   release.md              |  |
+|    | - LLM: secoes dinamicas   |  | - gerar schema dinamico   |  |
+|    +---------------------------+  | - LLM: secoes dinamicas   |  |
+|                                   +---------------------------+  |
++------------------------------------------------------------------+
+                              |
+                              v
++------------------------------------------------------------------+
+| FASE F: RENDERIZACAO E EXPORTACAO (sem LLM)                     |
+|    - render_template(pr) -> prs/pr_{titulo}.md                   |
+|    - render_template(release) -> releases/release_{versao}.md    |
++------------------------------------------------------------------+
+                              |
+                              v
++------------------------------------------------------------------+
+| RETORNO                                                          |
+|    - return 0 (sucesso) / 1 (erro)                              |
 +------------------------------------------------------------------+
 ```
 
@@ -93,12 +99,12 @@ O workflow principal e executado por `workflows/sync.py:run_workflow()`.
 - `revision_range`: Range Git (ex: v1.0..v1.1)
 - `since`: Data inicial (opcional)
 - `until`: Data final (opcional)
-- `config`: Configuracao (para limites de diff)
+- `config`: Configuracao (para limites de diff anchors)
 
 **Fluxo:**
 ```
 1. Construir comando git log
-   git log --date=iso-strict --pretty=format:__COMMIT__%n%H%x1f%an%x1f%ae%x1f%ad%x1f%s --numstat
+   git log --date=iso-strict --pretty=format:__COMMIT__%n%H%x1f... --numstat
 
 2. Executar via run_git()
 
@@ -107,26 +113,24 @@ O workflow principal e executado por `workflows/sync.py:run_workflow()`.
    - Extrair campos delimitados por \x1f
    - Extrair numstat (additions, deletions, files)
 
-4. Fetch paralelo para cada commit:
+4. Fetch paralelo para cada commit (ThreadPoolExecutor):
    - git show -s --format=%B <sha>  -> body
    - git show --unified=3 <sha>    -> diff
 
-5. Truncar diffs conforme config.diff.max_bytes/max_lines
+5. Extrair diff_anchors via extract_diff_anchors()
+   - Keywords das linhas +/-
+   - Artifacts (endpoints, servicos, etc.)
 
-6. Retornar List[Commit]
+6. Retornar List[Commit] completos
 ```
 
-**Saida:** Lista de objetos Commit com todos os campos preenchidos
+**Saida:** Lista de objetos `Commit` com todos os campos preenchidos
 
 ---
 
 ### UC2: Classificar Commits
 
 **Servico:** `aggregation.classify_commit()`
-
-**Entrada:**
-- `subject`: Subject do commit
-- `commit_types`: Dicionario de tipos e patterns
 
 **Fluxo:**
 ```
@@ -135,22 +139,10 @@ O workflow principal e executado por `workflows/sync.py:run_workflow()`.
 2. Para cada tipo em commit_types:
    Para cada pattern do tipo:
      Se re.search(pattern, subject):
-       return (tipo, True)
+       return (tipo, True)  # is_conventional=True
 
 3. Se nenhum match:
-   return ("other", False)
-```
-
-**Configuracao de Patterns:**
-```json
-{
-  "feat": {"patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"]},
-  "fix": {"patterns": ["\\bfix\\b", "\\bbugfix\\b", "\\bcorrect\\b"]},
-  "docs": {"patterns": ["\\bdocs\\b", "\\bdocument\\b"]},
-  "refactor": {"patterns": ["\\brefactor\\b", "\\breorganize\\b"]},
-  "test": {"patterns": ["\\btest\\b", "\\bspec\\b"]},
-  "chore": {"patterns": ["\\bchore\\b", "\\bbuild\\b", "\\bci\\b"]}
-}
+   return ("other", False)  # is_conventional=False
 ```
 
 ---
@@ -159,10 +151,6 @@ O workflow principal e executado por `workflows/sync.py:run_workflow()`.
 
 **Servico:** `aggregation.compute_importance()`
 
-**Entrada:**
-- `commit`: Objeto Commit
-- `config`: Configuracao com pesos
-
 **Formula:**
 ```
 score = (additions + deletions) * weight_lines
@@ -170,15 +158,7 @@ score = (additions + deletions) * weight_lines
       + keyword_bonus
 ```
 
-**Keyword Bonuses:**
-| Keyword | Bonus |
-|---------|-------|
-| breaking | 3.0 |
-| security | 2.0 |
-| hotfix | 2.0 |
-| perf | 1.0 |
-
-**Mapeamento para Bands:**
+**Faixas Padrao:**
 | Score | Band |
 |-------|------|
 | < 3.0 | low |
@@ -192,13 +172,9 @@ score = (additions + deletions) * weight_lines
 
 **Servico:** `aggregation.group_commits_by_type()`
 
-**Entrada:**
-- `commits`: Lista de commits classificados
-- `config`: Configuracao com tipos
-
 **Fluxo:**
 ```
-1. Criar dicionario vazio por tipo
+1. Criar grupos vazios por tipo
 
 2. Para cada commit:
    groups[commit.change_type].append(commit)
@@ -206,18 +182,7 @@ score = (additions + deletions) * weight_lines
 3. Para cada grupo:
    Ordenar por importance_score DESC
 
-4. Ordenar grupos por ordem definida em config
-
-5. Retornar List[(type, List[Commit])]
-```
-
-**Saida:**
-```python
-[
-    ("feat", [commit1, commit2]),
-    ("fix", [commit3]),
-    ("docs", [commit4, commit5]),
-]
+4. Retornar List[(type, List[Commit])]
 ```
 
 ---
@@ -240,26 +205,23 @@ score = (additions + deletions) * weight_lines
      - SHA curto
      - Subject
      - Body (se houver)
-     - Diff truncado
+     - DiffAnchors (keywords, artifacts, files)
 
 2. Carregar prompt apropriado:
    - "pr" -> commit_group_summary_pr.txt
    - "release" -> commit_group_summary_release.txt
 
-3. Renderizar prompt com:
-   - type_label
-   - commit_blocks
-   - language_hint
+3. Renderizar prompt com type_label, commit_blocks, language_hint
 
-4. Chamar LLM via call_ollama()
+4. Chamar LLM via call_llm_structured() -> CommitGroupSummary
 
-5. Retornar resposta formatada em bullets
+5. Retornar lista de summary_points formatados em bullets
 ```
 
 **Diferenca entre PR e Release:**
 
 | Aspecto | PR | Release |
-|---------|----|---------
+|---------|----|---------|
 | Foco | Tecnico | Usuario final |
 | Linguagem | Detalhada | Simplificada |
 | Inclui | Detalhes de implementacao | Beneficios para usuario |
@@ -270,32 +232,27 @@ score = (additions + deletions) * weight_lines
 
 **Servico:** `composition.build_pr_fields()`
 
-**Entrada:**
-- `grouped_summaries`: Lista de (tipo, resumo)
-- `config`: Configuracao
-- `model`: Modelo LLM
-
 **Fluxo:**
 ```
-1. Formatar summaries em markdown
+1. Parsear template pr.md -> ParsedTemplate
+   (template_parser.parse_template)
 
-2. Carregar prompt pr_fields.txt
+2. Para cada secao dinamica:
+   - Ler instrucoes da secao
+   - Construir schema Pydantic dinamico
+   (dynamic_fields.build_dynamic_schema)
 
-3. Renderizar com:
-   - commit_summaries formatados
+3. Construir prompt com:
+   - Instrucoes de cada secao
+   - Summaries dos grupos de commits
+   - Mudancas por tipo
+   - Alertas
    - language_hint
+   (dynamic_fields.build_dynamic_prompt)
 
-4. Chamar LLM
+4. Chamar LLM via call_llm_structured() com schema dinamico
 
-5. Extrair JSON da resposta
-
-6. Retornar campos:
-   {
-     "title": "...",
-     "summary": "...",
-     "risks": "...",
-     "testing": "..."
-   }
+5. Retornar campos mapeados por chave de secao
 ```
 
 ---
@@ -306,38 +263,12 @@ score = (additions + deletions) * weight_lines
 
 **Entrada:**
 - `release_summaries`: Lista de (tipo, resumo)
-- `domain_xml`: XML de dominio do repositorio
+- `domain_profile`: ProjectProfile do repositorio (JSON)
 - `config`: Configuracao
 - `model`: Modelo LLM
 - `version`: Label de versao
 
-**Fluxo:**
-```
-1. Formatar summaries
-
-2. Truncar domain_xml (max 6000 chars)
-
-3. Carregar prompt release_fields.txt
-
-4. Renderizar com:
-   - release_version
-   - domain_xml
-   - commit_summaries
-   - language_hint
-
-5. Chamar LLM
-
-6. Extrair JSON
-
-7. Retornar campos:
-   {
-     "executive_summary": "...",
-     "highlights": "...",
-     "migration_notes": "...",
-     "known_issues": "...",
-     "internal_notes": "..."
-   }
-```
+**Fluxo identico ao UC6**, mas usando template `release.md` e incluindo o perfil de dominio no contexto do prompt.
 
 ---
 
@@ -345,55 +276,44 @@ score = (additions + deletions) * weight_lines
 
 **Servico:** `composition.render_template()`
 
-**Entrada:**
-- `template_text`: Conteudo do template markdown
-- `values`: Dicionario de valores
-
 **Fluxo:**
 ```
-1. Para cada key em values:
-   Substituir {{key}} por values[key]
+1. Para cada secao do ParsedTemplate:
+   - Se is_static: preservar conteudo original (checkboxes)
+   - Se chave == "alteracoes" (ou "changes"): injetar changes_by_type
+   - Se dinamica: substituir pelo valor gerado pelo LLM
 
-2. Limpar placeholders nao-usados:
-   Remover linhas com {{...}} restantes
+2. Montar markdown final com titulo e secoes
 
-3. Retornar markdown final
+3. Retornar markdown completo
 ```
 
 ---
 
 ### UC9: Construir Perfil de Dominio
 
-**Servico:** `domain_profile.build_domain_profile()`
-
-**Entrada:**
-- `repo_dir`: Path do repositorio
-- `template_path`: Template XML
-- `xsd_path`: Schema de validacao
-- `model`: Modelo LLM
-- `config`: Configuracao
+**Servico:** `adapters/domain_profile.build_domain_profile()`
 
 **Fluxo:**
 ```
-1. Indexar repositorio:
-   - Iterar arquivos (.py, .md, .json, .yaml)
-   - Ler conteudo (limitado por max_file_bytes)
-   - Extrair anchors (keywords, APIs, tables)
+1. Verificar cache (utils/domain_profile_{repo}.json)
+   - Se existe e --refresh-domain nao foi passado: retornar cache
 
-2. Preencher template com anchors extraidos
+2. Indexar repositorio (domain_definition.build_repository_index):
+   - Iterar arquivos (.py, .md, .json, .yaml, etc.)
+   - Ler conteudo limitado por max_file_bytes
+   - Extrair anchors (top_keywords, extract_anchors)
 
 3. Construir prompt com:
-   - Contexto do repositorio (snippets de codigo)
-   - Template XML pre-preenchido
+   - Snippets de codigo do repositorio
+   - Anchors extraidos (keywords, APIs, tabelas, eventos)
+   (prompts/domain_profile.txt)
 
-4. Chamar LLM para completar XML:
-   - Preencher <domain>
-   - Preencher <entities>
-   - Ajustar descricoes
+4. Chamar LLM via call_llm_structured() -> ProjectProfile (Pydantic)
 
-5. Validar XML contra XSD
+5. Salvar ProjectProfile como JSON no cache
 
-6. Salvar e retornar DomainResult
+6. Retornar ProjectProfile validado
 ```
 
 ---
@@ -402,19 +322,20 @@ score = (additions + deletions) * weight_lines
 
 **Servico:** `export.export_*()`
 
-**Funcoes:**
-
-1. **export_commits(commits, output_dir)**
-   - Serializa List[Commit] para JSON
-   - Salva em commits.json
-
-2. **export_convention_report(report, output_dir)**
-   - Formata relatorio de convencoes em markdown
-   - Salva em conventions.md
-
-3. **export_text_document(content, output_dir, filename)**
-   - Salva conteudo texto
-   - Usado para pr.md e release.md
+**Estrutura criada:**
+```
+{output_dir}/{repo_name}/
+├── prs/
+│   └── pr_{titulo}.md
+├── releases/
+│   └── release_{versao}.md
+└── utils/
+    ├── commit.json
+    ├── conventions.md
+    ├── domain_profile_{repo}.json
+    └── prompts/  (se --debug)
+        └── {counter}_{HHMMSS}_{name}.txt
+```
 
 ---
 
@@ -426,14 +347,13 @@ Quando `--no-llm` e especificado:
 
 ```
 1. Coleta de commits (normal)
-2. Classificacao (normal)
-3. Scoring (normal)
+2. Classificacao e scoring (normal)
+3. Exportacao de commits e conventions (normal)
 4. Sumarizacao: SKIP LLM
-   - Usar subjects como fallback
-   - Agrupar por tipo sem resumir
-5. Composicao: SKIP field generation
-   - Usar placeholders ou valores vazios
-6. Exportacao (normal)
+   - Usar subjects dos commits como fallback
+5. Geracao de campos: SKIP LLM
+   - Usar valores vazios ou placeholder
+6. Renderizacao e exportacao (normal, com conteudo minimo)
 ```
 
 ### Modo --refresh-domain
@@ -441,13 +361,11 @@ Quando `--no-llm` e especificado:
 Quando `--refresh-domain` e especificado:
 
 ```
-1. Ignorar XML de dominio existente
-2. Recriar perfil completo:
-   - Re-indexar repositorio
-   - Re-extrair anchors
-   - Re-chamar LLM
-   - Re-validar contra XSD
-3. Salvar novo XML
+1. Ignorar perfil de dominio cacheado (domain_profile_{repo}.json)
+2. Re-indexar repositorio completo
+3. Re-extrair anchors
+4. Re-chamar LLM para gerar novo ProjectProfile
+5. Salvar novo perfil no cache
 ```
 
 ### Modo --generate pr
@@ -457,11 +375,13 @@ Apenas gera PR, sem release notes:
 ```
 1. Coleta de commits
 2. Classificacao e scoring
-3. Sumarizacao com output_type="pr"
+3. Sumarizacao apenas com output_type="pr"
 4. build_pr_fields()
 5. render_template(pr.md)
-6. Exportar apenas pr.md
+6. Exportar apenas prs/pr_{titulo}.md
 ```
+
+**Nota:** Perfil de dominio NAO e gerado neste modo.
 
 ### Modo --generate release
 
@@ -469,12 +389,12 @@ Apenas gera release notes:
 
 ```
 1. Coleta de commits
-2. Preparacao de dominio (obrigatorio)
+2. Geracao de perfil de dominio (obrigatorio)
 3. Classificacao e scoring
-4. Sumarizacao com output_type="release"
+4. Sumarizacao apenas com output_type="release"
 5. build_release_fields()
 6. render_template(release.md)
-7. Exportar apenas release.md
+7. Exportar apenas releases/release_{versao}.md
 ```
 
 ## Diagrama de Sequencia: Geracao de Release
@@ -484,30 +404,27 @@ Usuario      CLI        Workflow     DataCollection    Aggregation    Compositio
    |          |            |              |                |              |            |
    |--run---->|            |              |                |              |            |
    |          |--args----->|              |                |              |            |
+   |          |            |==FASE A (paralelo)==          |              |            |
    |          |            |--get_commits->|              |                |            |
-   |          |            |              |--git log---->|                |            |
-   |          |            |              |<--commits----|                |            |
+   |          |            |--build_domain_profile----------------------->|            |
    |          |            |<-commits-----|              |                |            |
+   |          |            |<-domain_profile-------------|                |            |
    |          |            |              |              |                |            |
-   |          |            |--classify------------------->|              |            |
-   |          |            |<-classified------------------|              |            |
+   |          |            |==FASE B==    |              |                |            |
+   |          |            |--classify+score------------>|              |             |
+   |          |            |--export_commits+conventions-|-------------->|             |
    |          |            |              |              |                |            |
-   |          |            |--score------------------------->|            |            |
-   |          |            |<-scored-------------------------|            |            |
+   |          |            |==FASE C (paralelo)==                                      |
+   |          |            |--summarize (pr + release)-->|              |             |
+   |          |            |<-summaries------------------|              |             |
    |          |            |              |              |                |            |
-   |          |            |--summarize--------------------->|            |            |
-   |          |            |              |              |--LLM call----->|            |
-   |          |            |<-summaries----------------------|            |            |
+   |          |            |==FASE E (paralelo)==                                      |
+   |          |            |--build_pr_fields+build_release_fields------>|            |
+   |          |            |<-fields------------------------------------|              |
    |          |            |              |              |                |            |
-   |          |            |--build_release_fields---------->|            |            |
-   |          |            |              |              |--LLM call----->|            |
-   |          |            |<-fields-------------------------|            |            |
-   |          |            |              |              |                |            |
-   |          |            |--render_template--------------->|            |            |
-   |          |            |<-markdown-----------------------|            |            |
-   |          |            |              |              |                |            |
-   |          |            |--export---------------------------------------->|         |
-   |          |            |<-path------------------------------------------|         |
+   |          |            |==FASE F==    |              |                |            |
+   |          |            |--render_template + export------------------------->|      |
+   |          |            |<-paths--------------------------------------------|      |
    |          |<--0--------|              |              |                |            |
    |<-success-|            |              |              |                |            |
 ```

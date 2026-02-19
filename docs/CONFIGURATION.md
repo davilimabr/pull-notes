@@ -12,38 +12,52 @@ O arquivo de configuracao e um JSON que define comportamentos da ferramenta. Use
 {
   "commit_types": {
     "feat": {
-      "label": "Features",
+      "label": "Funcionalidades",
       "patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"]
     },
     "fix": {
-      "label": "Correcoes",
-      "patterns": ["\\bfix\\b", "\\bbugfix\\b", "\\bcorrect\\b"]
+      "label": "Ajustes",
+      "patterns": ["\\bfix\\b", "\\bbugfix\\b"]
     },
     "docs": {
       "label": "Documentacao",
-      "patterns": ["\\bdocs\\b", "\\bdocument\\b"]
+      "patterns": ["\\bdocs\\b"]
     },
     "refactor": {
       "label": "Refatoracao",
-      "patterns": ["\\brefactor\\b", "\\breorganize\\b"]
-    },
-    "test": {
-      "label": "Testes",
-      "patterns": ["\\btest\\b", "\\bspec\\b"]
-    },
-    "chore": {
-      "label": "Manutencao",
-      "patterns": ["\\bchore\\b", "\\bbuild\\b", "\\bci\\b"]
+      "patterns": ["\\brefactor\\b"]
     },
     "perf": {
       "label": "Performance",
-      "patterns": ["\\bperf\\b", "\\boptimize\\b"]
+      "patterns": ["\\bperf\\b"]
+    },
+    "test": {
+      "label": "Testes",
+      "patterns": ["\\btest\\b", "\\btests\\b"]
+    },
+    "build": {
+      "label": "Build",
+      "patterns": ["\\bbuild\\b"]
+    },
+    "ci": {
+      "label": "CI",
+      "patterns": ["\\bci\\b"]
     },
     "style": {
       "label": "Estilo",
-      "patterns": ["\\bstyle\\b", "\\bformat\\b"]
+      "patterns": ["\\bstyle\\b"]
+    },
+    "chore": {
+      "label": "chore",
+      "patterns": ["\\bchore\\b"]
+    },
+    "revert": {
+      "label": "revert",
+      "patterns": ["\\brevert\\b"]
     }
   },
+
+  "other_label": "Other",
 
   "importance": {
     "weight_lines": 0.02,
@@ -52,8 +66,7 @@ O arquivo de configuracao e um JSON que define comportamentos da ferramenta. Use
       "breaking": 3.0,
       "security": 2.0,
       "hotfix": 2.0,
-      "perf": 1.0,
-      "critical": 2.5
+      "perf": 1.0
     }
   },
 
@@ -64,31 +77,34 @@ O arquivo de configuracao e um JSON que define comportamentos da ferramenta. Use
     { "name": "critical", "min": 9.0 }
   ],
 
+  "diff": {
+    "max_anchors_keywords": 10,
+    "max_anchors_artifacts": 10
+  },
+
   "domain": {
-    "template_path": "xml/dominio.xml",
-    "xsd_path": "xml/XSD_dominio.xml",
-    "output_path": "dominio.xml",
-    "model": "deepseek-r1:8b",
+    "output_path": "domain_profile.json",
+    "model": "qwen2.5:7b",
     "max_total_bytes": 400000,
     "max_file_bytes": 40000
   },
-
-  "output": {
-    "dir": "./output"
-  },
-
-  "llm_model": "deepseek-r1:8b",
-  "llm_timeout_seconds": 600,
-  "language": "pt-BR",
 
   "templates": {
     "pr": "templates/pr.md",
     "release": "templates/release.md"
   },
 
-  "diff": {
-    "max_anchors_keywords": 10,
-    "max_anchors_artifacts": 10
+  "output": {
+    "dir": "./output"
+  },
+
+  "language": "pt-BR",
+  "llm_model": "qwen2.5:7b",
+  "llm_timeout_seconds": 600,
+  "llm_max_retries": 3,
+
+  "alerts": {
+    "none_text": "None."
   },
 
   "release": {
@@ -109,28 +125,22 @@ Define os tipos de commits reconhecidos e seus patterns de matching.
 | Campo | Tipo | Descricao |
 |-------|------|-----------|
 | `[key]` | string | Identificador do tipo (feat, fix, etc.) |
-| `label` | string | Label de exibicao |
-| `patterns` | array | Lista de regex patterns |
+| `label` | string | Label de exibicao nos documentos gerados |
+| `patterns` | array | Lista de regex patterns para matching |
 
 **Patterns:**
 - Regex Python padrao
 - Case-insensitive por padrao
 - Use `\\b` para word boundaries
 
-**Exemplo Customizado:**
+---
+
+### other_label
+
+Label usado para commits que nao se encaixam em nenhum tipo definido.
+
 ```json
-{
-  "commit_types": {
-    "feature": {
-      "label": "Novas Funcionalidades",
-      "patterns": ["\\bfeat\\b", "\\bnew\\b", "\\badd\\b", "\\bimplement\\b"]
-    },
-    "bugfix": {
-      "label": "Correcoes de Bugs",
-      "patterns": ["\\bfix\\b", "\\bbug\\b", "\\bresolve\\b", "\\bcorrect\\b"]
-    }
-  }
-}
+{ "other_label": "Other" }
 ```
 
 ---
@@ -152,22 +162,6 @@ score = (additions + deletions) * weight_lines
       + sum(keyword_bonus[kw] for kw in subject if kw in keyword_bonus)
 ```
 
-**Exemplo de Keyword Bonus:**
-```json
-{
-  "importance": {
-    "keyword_bonus": {
-      "breaking": 3.0,    // BREAKING CHANGE
-      "security": 2.0,    // Correcoes de seguranca
-      "hotfix": 2.0,      // Correcoes urgentes
-      "perf": 1.0,        // Melhorias de performance
-      "critical": 2.5,    // Mudancas criticas
-      "urgent": 1.5       // Mudancas urgentes
-    }
-  }
-}
-```
-
 ---
 
 ### importance_bands
@@ -180,91 +174,43 @@ Define as faixas de importancia baseadas no score calculado.
 | `min` | float | Score minimo para a faixa |
 
 **Configuracao Padrao:**
-```json
-{
-  "importance_bands": [
-    { "name": "low", "min": 0.0 },
-    { "name": "medium", "min": 3.0 },
-    { "name": "high", "min": 6.0 },
-    { "name": "critical", "min": 9.0 }
-  ]
-}
-```
+
+| Faixa | Score Minimo |
+|-------|-------------|
+| low | 0.0 |
+| medium | 3.0 |
+| high | 6.0 |
+| critical | 9.0 |
 
 **Ordem:** Sempre do menor para o maior `min`.
 
 ---
 
-### domain
+### diff
 
-Configuracao para extracao de perfil de dominio (usado em release notes).
-
-| Campo | Tipo | Descricao |
-|-------|------|-----------|
-| `template_path` | string | Path do template XML |
-| `xsd_path` | string | Path do schema XSD |
-| `output_path` | string | Nome do arquivo de saida |
-| `model` | string | Modelo LLM para geracao |
-| `max_total_bytes` | int | Limite total de bytes indexados |
-| `max_file_bytes` | int | Limite por arquivo |
-
-**Exemplo:**
-```json
-{
-  "domain": {
-    "template_path": "xml/dominio.xml",
-    "xsd_path": "xml/XSD_dominio.xml",
-    "output_path": "dominio.xml",
-    "model": "deepseek-r1:8b",
-    "max_total_bytes": 400000,
-    "max_file_bytes": 40000
-  }
-}
-```
-
----
-
-### output
-
-Configura o diretorio de saida dos artefatos gerados.
-
-| Campo | Tipo | Descricao |
-|-------|------|-----------|
-| `dir` | string | Caminho do diretorio de saida |
-
-**Nota:** Pode ser sobrescrito com `--output-dir` na CLI.
-
----
-
-### llm_model e llm_timeout_seconds
-
-Configuracao do modelo LLM principal.
+Configuracao para extracao de ancoras semanticas dos diffs.
 
 | Campo | Tipo | Padrao | Descricao |
 |-------|------|--------|-----------|
-| `llm_model` | string | - | Nome do modelo Ollama |
-| `llm_timeout_seconds` | int | 600 | Timeout para chamadas LLM |
+| `max_anchors_keywords` | int | 10 | Maximo de keywords extraidas por diff |
+| `max_anchors_artifacts` | int | 10 | Maximo de artifacts detectados por diff |
 
-**Modelos Suportados (Ollama):**
-- `deepseek-r1:8b` (recomendado)
-- `llama2:7b`
-- `mistral:7b`
-- `codellama:7b`
-- Qualquer modelo disponivel no Ollama local
+Em vez de enviar o diff bruto ao LLM, a ferramenta extrai ancoras semanticas (keywords e artifacts) que reduzem significativamente o tamanho dos prompts mantendo o contexto relevante.
 
 ---
 
-### language
+### domain
 
-Define o idioma dos outputs gerados.
+Configuracao para geracao do perfil de dominio do projeto (JSON estruturado via LLM).
 
-| Valor | Descricao |
-|-------|-----------|
-| `pt-BR` | Portugues Brasileiro |
-| `en` | Ingles |
-| `es` | Espanhol |
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| `output_path` | string | Nome do arquivo de cache do perfil |
+| `model` | string | Modelo LLM para geracao do perfil |
+| `max_total_bytes` | int | Limite total de bytes indexados do repositorio |
+| `max_file_bytes` | int | Limite de bytes por arquivo indexado |
 
-**Uso:** Passado como hint para o LLM nos prompts.
+O perfil e cacheado em `utils/domain_profile_{repo}.json` e reutilizado em execucoes subsequentes. Use `--refresh-domain` para forcar recriacao.
 
 ---
 
@@ -281,20 +227,57 @@ Paths dos templates markdown de saida.
 
 ---
 
-### diff
+### output
 
-Configuracao para extracao de ancoras semanticas dos diffs.
+Configura o diretorio base de saida dos artefatos gerados.
+
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| `dir` | string | Caminho do diretorio base de saida |
+
+**Nota:** Pode ser sobrescrito com `--output-dir` na CLI. Os arquivos sao organizados em `{dir}/{repo_name}/prs/`, `releases/` e `utils/`.
+
+---
+
+### llm_model, llm_timeout_seconds, llm_max_retries
+
+Configuracao do modelo LLM principal.
 
 | Campo | Tipo | Padrao | Descricao |
 |-------|------|--------|-----------|
-| `max_anchors_keywords` | int | 10 | Maximo de keywords extraidas por diff |
-| `max_anchors_artifacts` | int | 10 | Maximo de artifacts detectados por diff |
+| `llm_model` | string | - | Nome do modelo Ollama |
+| `llm_timeout_seconds` | int | 600 | Timeout para chamadas LLM (segundos) |
+| `llm_max_retries` | int | 3 | Numero de tentativas em caso de falha |
 
-**Nota:** Em vez de truncar diffs brutos, a ferramenta agora extrai ancoras semanticas (keywords e artifacts) que sao mais informativas para o LLM e reduzem significativamente o tamanho dos prompts.
+**Modelos Suportados (Ollama):**
+- `qwen2.5:7b` (recomendado, bom para instrucoes estruturadas)
+- `llama3:8b`
+- `mistral:7b`
+- Qualquer modelo disponivel no Ollama local
 
-**Ancoras Extraidas:**
-- **Keywords:** Palavras-chave das linhas adicionadas/removidas (excluindo stopwords)
-- **Artifacts:** Padroes detectados como endpoints API, eventos e servicos
+---
+
+### language
+
+Define o idioma dos outputs gerados.
+
+| Valor | Descricao |
+|-------|-----------|
+| `pt-BR` | Portugues Brasileiro |
+| `en` | Ingles |
+| `es` | Espanhol |
+
+Passado como hint para o LLM nos prompts.
+
+---
+
+### alerts
+
+Configuracao para mensagens de alerta nos documentos gerados.
+
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| `none_text` | string | Texto quando nao ha alertas (ex: "None.") |
 
 ---
 
@@ -309,17 +292,7 @@ Configuracao especifica para release notes.
 
 **Version Template Placeholders:**
 - `{revision_range}` - Range Git completo
-- `{version}` - Versao passada via CLI
-
-**Exemplo:**
-```json
-{
-  "release": {
-    "version_template": "v{version}",
-    "date_format": "%d/%m/%Y"
-  }
-}
-```
+- `{version}` - Versao passada via `--version`
 
 ---
 
@@ -332,7 +305,6 @@ O arquivo de configuracao e validado automaticamente. Erros comuns:
 | `Missing key: commit_types` | Secao obrigatoria ausente | Adicionar secao |
 | `Empty commit_types` | Nenhum tipo definido | Definir ao menos um tipo |
 | `Missing templates.pr` | Template PR nao especificado | Adicionar path (se --generate pr) |
-| `Missing domain config` | Config de dominio ausente | Adicionar (se --generate release) |
 
 ## Exemplo Minimo
 
@@ -344,6 +316,7 @@ Configuracao minima funcional:
     "feat": { "label": "Features", "patterns": ["\\bfeat\\b"] },
     "fix": { "label": "Fixes", "patterns": ["\\bfix\\b"] }
   },
+  "other_label": "Other",
   "importance": {
     "weight_lines": 0.02,
     "weight_files": 0.6,
@@ -353,12 +326,20 @@ Configuracao minima funcional:
     { "name": "low", "min": 0.0 },
     { "name": "high", "min": 5.0 }
   ],
+  "diff": { "max_anchors_keywords": 10, "max_anchors_artifacts": 10 },
   "output": { "dir": "./output" },
-  "llm_model": "deepseek-r1:8b",
+  "llm_model": "qwen2.5:7b",
+  "llm_timeout_seconds": 600,
+  "llm_max_retries": 3,
   "language": "pt-BR",
+  "alerts": { "none_text": "None." },
   "templates": {
     "pr": "templates/pr.md",
     "release": "templates/release.md"
+  },
+  "release": {
+    "version_template": "{revision_range}",
+    "date_format": "%Y-%m-%d"
   }
 }
 ```

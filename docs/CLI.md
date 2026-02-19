@@ -43,7 +43,7 @@ pullnotes C:\Users\Dev\projeto
 
 **Exemplo:**
 ```bash
-pullnotes . --config config.json
+pullnotes . --config config.default.json
 pullnotes . --config /path/to/custom-config.json
 ```
 
@@ -127,7 +127,7 @@ pullnotes . --config config.json --generate both
 
 ### --version LABEL
 
-**Descricao:** Label de versao para o release (sobrescreve template).
+**Descricao:** Label de versao para o release (sobrescreve template de versao do config).
 
 **Uso:** Principalmente para release notes.
 
@@ -141,7 +141,7 @@ pullnotes . --config config.json --version "v1.5.0-beta"
 
 ### --output-dir DIR
 
-**Descricao:** Diretorio onde os arquivos serao gerados (sobrescreve config).
+**Descricao:** Diretorio base onde os arquivos serao gerados (sobrescreve config).
 
 **Exemplos:**
 ```bash
@@ -153,13 +153,13 @@ pullnotes . --config config.json --output-dir /tmp/output
 
 ### --refresh-domain
 
-**Descricao:** Forca a recriacao do perfil de dominio XML.
+**Descricao:** Forca a recriacao do perfil de dominio do projeto.
 
 **Comportamento:**
-- Sem flag: Reutiliza XML existente se disponivel
-- Com flag: Ignora XML existente e regenera
+- Sem flag: Reutiliza perfil JSON existente se disponivel
+- Com flag: Ignora cache e regenera o perfil via LLM
 
-**Uso:** Quando o codigo fonte mudou significativamente.
+**Uso:** Quando o codigo fonte mudou significativamente e o perfil cacheado esta desatualizado.
 
 **Exemplo:**
 ```bash
@@ -170,13 +170,13 @@ pullnotes . --config config.json --generate release --refresh-domain
 
 ### --model MODEL
 
-**Descricao:** Sobrescreve o modelo LLM configurado.
+**Descricao:** Sobrescreve o modelo LLM configurado no arquivo de config.
 
 **Exemplos:**
 ```bash
-pullnotes . --config config.json --model llama2:7b
+pullnotes . --config config.json --model llama3:8b
 pullnotes . --config config.json --model mistral:7b
-pullnotes . --config config.json --model deepseek-r1:14b
+pullnotes . --config config.json --model qwen2.5:14b
 ```
 
 ---
@@ -197,13 +197,28 @@ pullnotes . --config config.json --no-llm
 
 ---
 
+### --debug
+
+**Descricao:** Habilita logging em nivel DEBUG.
+
+**Comportamento:**
+- Sem flag: Logging em nivel WARNING
+- Com flag: Logging detalhado (DEBUG) para todos os modulos
+
+**Exemplo:**
+```bash
+pullnotes . --config config.json --debug
+```
+
+---
+
 ## Exemplos Completos
 
 ### Geracao Basica
 
 ```bash
 # PR e Release Notes para commits entre tags
-pullnotes /path/to/repo --config config.json --range v1.0..v1.1
+pullnotes /path/to/repo --config config.default.json --range v1.0..v1.1
 ```
 
 ### Apenas Pull Request
@@ -230,7 +245,7 @@ pullnotes . \
 
 ```bash
 # Testar coleta e classificacao sem chamar LLM
-pullnotes . --config config.json --no-llm --output-dir ./debug
+pullnotes . --config config.json --no-llm --debug --output-dir ./debug
 ```
 
 ### Modelo Alternativo
@@ -239,7 +254,7 @@ pullnotes . --config config.json --no-llm --output-dir ./debug
 # Usar modelo diferente para melhor qualidade
 pullnotes . \
   --config config.json \
-  --model deepseek-r1:14b \
+  --model qwen2.5:14b \
   --generate both
 ```
 
@@ -247,15 +262,16 @@ pullnotes . \
 
 ## Arquivos de Saida
 
-Apos execucao, os seguintes arquivos sao gerados no diretorio de saida:
+Apos execucao, os arquivos sao gerados em `{output_dir}/{repo_name}/`:
 
-| Arquivo | Condicao | Descricao |
+| Caminho | Condicao | Descricao |
 |---------|----------|-----------|
-| `pr.md` | --generate pr ou both | Documento de Pull Request |
-| `release.md` | --generate release ou both | Release Notes |
-| `commits.json` | Sempre | Dados completos dos commits |
-| `conventions.md` | Sempre | Relatorio de conventional commits |
-| `dominio.xml` | --generate release | Perfil de dominio extraido |
+| `prs/pr_{titulo}.md` | `--generate pr` ou `both` | Documento de Pull Request |
+| `releases/release_{versao}.md` | `--generate release` ou `both` | Release Notes |
+| `utils/commit.json` | Sempre | Dados completos dos commits |
+| `utils/conventions.md` | Sempre | Relatorio de conventional commits |
+| `utils/domain_profile_{repo}.json` | `--generate release` ou `both` | Perfil de dominio cacheado |
+| `utils/prompts/` | Com `--debug` | Prompts e respostas LLM salvos |
 
 ---
 
@@ -291,7 +307,7 @@ Apos execucao, os seguintes arquivos sao gerados no diretorio de saida:
 **Solucao:**
 1. Iniciar Ollama: `ollama serve`
 2. Verificar modelo: `ollama list`
-3. Baixar modelo: `ollama pull deepseek-r1:8b`
+3. Baixar modelo: `ollama pull qwen2.5:7b`
 
 ### Erro: "No commits found"
 
@@ -331,7 +347,8 @@ args = Namespace(
     output_dir=None,
     refresh_domain=False,
     model=None,
-    no_llm=False
+    no_llm=False,
+    debug=False
 )
 
 exit_code = run_workflow(args)

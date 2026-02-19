@@ -6,13 +6,12 @@ Este documento descreve cada modulo do projeto, suas funcoes e responsabilidades
 
 1. [Entry Points](#entry-points)
 2. [Configuracao](#configuracao)
-3. [Domain - Models](#domain---models)
+3. [Domain - Models e Schemas](#domain---models-e-schemas)
 4. [Domain - Services](#domain---services)
 5. [Adapters](#adapters)
 6. [Workflows](#workflows)
 7. [Prompts](#prompts)
 8. [Templates](#templates)
-9. [XML](#xml)
 
 ---
 
@@ -49,7 +48,7 @@ if __name__ == "__main__":
 
 **Argumentos Suportados:**
 - `repo` - Path do repositorio (padrao: ".")
-- `--config` - Arquivo de configuracao JSON
+- `--config` - Arquivo de configuracao JSON (obrigatorio)
 - `--range` - Git revision range
 - `--since` / `--until` - Filtro por data
 - `--generate` - Tipo de output (pr/release/both)
@@ -58,6 +57,7 @@ if __name__ == "__main__":
 - `--refresh-domain` - Reconstruir perfil de dominio
 - `--model` - Override do modelo LLM
 - `--no-llm` - Desabilitar sumarizacao LLM
+- `--debug` - Habilitar logging em nivel DEBUG
 
 ---
 
@@ -76,12 +76,6 @@ if __name__ == "__main__":
 | `load_config(path)` | Carrega JSON de configuracao |
 | `validate_config(config, generate)` | Valida estrutura e campos obrigatorios |
 
-**Validacoes Realizadas:**
-- Presenca de keys obrigatorios (commit_types, importance, output)
-- Valores nao-vazios
-- Estrutura correta de nested objects
-- Validacao condicional baseada em `--generate`
-
 **Estrutura Esperada:**
 ```python
 {
@@ -90,21 +84,26 @@ if __name__ == "__main__":
     "importance_bands": list,  # Faixas de importancia
     "output": dict,            # Diretorio de saida
     "templates": dict,         # Paths dos templates
-    "domain": dict,            # Configuracao de dominio (opcional)
+    "domain": dict,            # Configuracao de dominio (para release)
     "llm_model": str,          # Modelo Ollama
-    "language": str            # Idioma de saida
+    "llm_timeout_seconds": int,
+    "llm_max_retries": int,
+    "language": str,           # Idioma de saida (ex: pt-BR)
+    "alerts": dict,            # Configuracao de alertas
+    "diff": dict,              # Limites de extracao de ancoras
+    "release": dict            # Config de versao e data
 }
 ```
 
 ---
 
-## Domain - Models
+## Domain - Models e Schemas
 
 ### `domain/models.py`
 
 **Caminho:** `src/pullnotes/domain/models.py`
 
-**Responsabilidade:** Definicao da entidade central `Commit`
+**Responsabilidade:** Definicao da entidade central `Commit` e constantes de formato Git
 
 **Classe Principal:**
 
@@ -125,7 +124,8 @@ class Commit:
     files: List[str] = field(default_factory=list)
     additions: int = 0
     deletions: int = 0
-    diff: str = ""              # Diff truncado
+    diff: str = ""              # Diff completo
+    diff_anchors: Optional[DiffAnchors] = None  # Ancoras semanticas
 
     # Classificacao
     change_type: str = ""       # feat, fix, docs, etc.
@@ -147,6 +147,12 @@ class Commit:
 ```python
 COMMIT_MARKER = "__COMMIT__"
 GIT_FORMAT = f"{COMMIT_MARKER}%n%H%x1f%an%x1f%ae%x1f%ad%x1f%s"
+
+SENSITIVE_FILENAMES = {".env"}
+SENSITIVE_PREFIXES = (".env.",)
+
+def is_sensitive_file(filename: str) -> bool:
+    """Verifica se arquivo e sensivel (.env, .env.*)"""
 ```
 
 ### `domain/errors.py`
@@ -161,29 +167,35 @@ class DomainBuildError(Exception):
     pass
 ```
 
-### `domain/domain_profile.py`
+### `domain/schemas.py`
 
-**Caminho:** `src/pullnotes/domain/domain_profile.py`
+**Caminho:** `src/pullnotes/domain/schemas.py`
 
-**Responsabilidade:** Orquestracao da geracao do perfil de dominio
+**Responsabilidade:** Schemas Pydantic para validacao de dados estruturados
 
-**Classe/Funcao Principal:**
+**Schemas Principais:**
+
+| Schema | Descricao |
+|--------|-----------|
+| `DiffKeyword` | Keyword extraida de diff (texto + tipo added/removed) |
+| `DiffArtifact` | Artefato detectado em diff (kind + nome + tipo) |
+| `DiffAnchors` | Conjunto de ancoras semanticas de um commit |
+| `CommitGroupSummary` | Resumo de grupo de commits (lista de bullets) |
+| `ProjectProfile` | Perfil completo do projeto gerado por LLM |
+| `ProjectType` | Tipo e descricao do projeto |
+| `Domain` | Informacoes de dominio do projeto |
+| `DomainAnchors` | Ancoras extraidas do codebase |
+| `DomainDetails` | Detalhes de negocio (regras, integracoes, usuarios-alvo) |
+
+**Enums:**
 
 ```python
-@dataclass
-class DomainResult:
-    output_path: Path    # Onde XML foi salvo
-    xml_text: str        # Conteudo do XML
+class ProjectKind(str, Enum):
+    framework, web_service, web_app, mobile_app, desktop_app,
+    data_pipeline, infrastructure, cli, library, package, other
 
-def build_domain_profile(
-    repo_dir: Path,
-    template_path: Path,
-    xsd_path: Path,
-    output_path: Path,
-    model: str,
-    config: dict
-) -> DomainResult:
-    """Orquestra extracao de contexto e geracao de XML"""
+class ArtifactKind(str, Enum):
+    db_table, topic, queue, api_endpoint, event, service, file, config
 ```
 
 ---
@@ -200,10 +212,9 @@ def build_domain_profile(
 
 | Funcao | Descricao |
 |--------|-----------|
-| `get_commits(repo_dir, range, since, until)` | Funcao principal de coleta |
+| `get_commits(repo_dir, range, since, until, config)` | Funcao principal de coleta |
 | `parse_git_log(output)` | Parseia saida do git log |
 | `extract_diff_anchors(diff_text, max_keywords, max_artifacts)` | Extrai ancoras semanticas do diff |
-| `_prefix_origin_range(range)` | Fallback para origin/ refs |
 
 **Fluxo:**
 ```
@@ -213,11 +224,6 @@ def build_domain_profile(
 4. Extrair ancoras semanticas dos diffs (extract_diff_anchors)
 5. Retornar commits completos com diff_anchors
 ```
-
-**Ancoras Extraidas (DiffAnchors):**
-- `files_changed`: Lista de arquivos modificados
-- `keywords`: Keywords extraidas das linhas +/- (com tipo added/removed)
-- `artifacts`: Padroes detectados (API endpoints, eventos, servicos)
 
 ### `domain/services/aggregation.py`
 
@@ -229,12 +235,12 @@ def build_domain_profile(
 
 | Funcao | Descricao |
 |--------|-----------|
-| `classify_commit(subject, types)` | Classifica commit por patterns |
+| `classify_commit(subject, types)` | Classifica commit por patterns regex |
 | `compute_importance(commit, config)` | Calcula score de importancia |
-| `group_commits_by_type(commits, config)` | Agrupa por tipo de mudanca |
+| `group_commits_by_type(commits, config)` | Agrupa e ordena por tipo |
 | `summarize_commit_group(type, commits, ...)` | Resume grupo via LLM |
-| `summarize_all_groups(grouped, config, model, output_type)` | Resume todos os grupos |
-| `build_convention_report(commits)` | Gera relatorio de convencoes |
+| `summarize_all_groups(grouped, config, model, output_type)` | Resume todos os grupos em paralelo |
+| `build_convention_report(commits)` | Gera relatorio de aderencia a conventional commits |
 
 **Algoritmo de Scoring:**
 ```python
@@ -243,11 +249,46 @@ score = (additions + deletions) * weight_lines
        + keyword_bonus  # breaking, security, perf, hotfix
 ```
 
-**Faixas de Importancia:**
-- `low`: score < 3.0
-- `medium`: 3.0 <= score < 6.0
-- `high`: 6.0 <= score < 9.0
-- `critical`: score >= 9.0
+### `domain/services/template_parser.py`
+
+**Caminho:** `src/pullnotes/domain/services/template_parser.py`
+
+**Responsabilidade:** Parsing de templates markdown em secoes estruturadas
+
+**Classes:**
+
+```python
+@dataclass
+class TemplateSection:
+    heading: str        # Titulo da secao
+    key: str            # Chave slugificada
+    body: str           # Instrucoes para o LLM
+    is_static: bool     # True se contem checkboxes
+    level: int          # Nivel do heading markdown
+
+@dataclass
+class ParsedTemplate:
+    title_instruction: str
+    sections: List[TemplateSection]
+
+    @property
+    def dynamic_sections(self) -> List[TemplateSection]: ...
+    @property
+    def static_sections(self) -> List[TemplateSection]: ...
+```
+
+### `domain/services/dynamic_fields.py`
+
+**Caminho:** `src/pullnotes/domain/services/dynamic_fields.py`
+
+**Responsabilidade:** Geracao dinamica de schemas Pydantic e prompts a partir de templates
+
+**Funcoes Principais:**
+
+| Funcao | Descricao |
+|--------|-----------|
+| `build_dynamic_schema(sections)` | Gera modelo Pydantic das secoes dinamicas |
+| `build_dynamic_prompt(sections, ...)` | Gera prompt LLM para preenchimento |
 
 ### `domain/services/composition.py`
 
@@ -260,32 +301,12 @@ score = (additions + deletions) * weight_lines
 | Funcao | Descricao |
 |--------|-----------|
 | `build_version_label(template, range)` | Constroi label de versao |
-| `extract_json(raw_response)` | Extrai JSON de resposta LLM |
-| `build_pr_fields(summaries, config, model)` | Gera campos do PR |
-| `build_release_fields(summaries, domain, config, model, version)` | Gera campos de release |
-| `render_template(template, values)` | Renderiza template markdown |
-| `render_changes_by_type_from_summaries(summaries, config)` | Formata mudancas agrupadas |
+| `build_pr_fields(summaries, config, model, parsed_template)` | Gera campos do PR via LLM estruturado |
+| `build_release_fields(summaries, domain, config, model, version, parsed_template)` | Gera campos de release |
+| `render_template(parsed_template, title, fields, changes_by_type, alerts)` | Renderiza markdown final |
+| `render_changes_by_type_from_summaries(summaries, config)` | Formata mudancas agrupadas por tipo |
 
-**Campos Gerados para PR:**
-```json
-{
-    "title": "Titulo do PR",
-    "summary": "Resumo das mudancas",
-    "risks": "Riscos identificados",
-    "testing": "Instrucoes de teste"
-}
-```
-
-**Campos Gerados para Release:**
-```json
-{
-    "executive_summary": "Resumo executivo",
-    "highlights": "Destaques da versao",
-    "migration_notes": "Notas de migracao",
-    "known_issues": "Problemas conhecidos",
-    "internal_notes": "Notas internas"
-}
-```
+**Nota:** Os campos gerados sao dinamicos e dependem das secoes do template. Secoes com checkboxes sao preservadas como estaticas; demais secoes sao preenchidas pelo LLM.
 
 ### `domain/services/export.py`
 
@@ -297,15 +318,24 @@ score = (additions + deletions) * weight_lines
 
 | Funcao | Descricao |
 |--------|-----------|
-| `export_commits(commits, output_dir)` | Exporta commits.json |
-| `export_convention_report(report, output_dir)` | Exporta conventions.md |
-| `export_text_document(content, output_dir, filename)` | Exporta documento texto |
+| `create_output_structure(output_dir, repo_name)` | Cria estrutura de subdiretorios |
+| `export_commits(commits, utils_dir)` | Exporta commit.json |
+| `export_convention_report(report, utils_dir)` | Exporta conventions.md |
+| `export_pr(content, prs_dir, title)` | Exporta pr_{titulo}.md |
+| `export_release(content, releases_dir, version)` | Exporta release_{versao}.md |
 
-**Arquivos Gerados:**
-- `commits.json` - Dados completos dos commits
-- `conventions.md` - Relatorio de conventional commits
-- `pr.md` - Documento de Pull Request
-- `release.md` - Release Notes
+**Estrutura de Saida:**
+```
+{output_dir}/{repo_name}/
+├── prs/
+│   └── pr_{titulo}.md
+├── releases/
+│   └── release_{versao}.md
+└── utils/
+    ├── commit.json
+    ├── conventions.md
+    └── domain_profile_{repo}.json
+```
 
 ---
 
@@ -323,16 +353,7 @@ score = (additions + deletions) * weight_lines
 def run_git(repo_dir: Path, args: List[str]) -> str:
     """
     Executa comando git no repositorio especificado.
-
-    Args:
-        repo_dir: Path do repositorio
-        args: Argumentos do comando git
-
-    Returns:
-        Saida stdout do comando
-
-    Raises:
-        subprocess.CalledProcessError: Se comando falhar
+    Raises subprocess.CalledProcessError se falhar.
     """
 ```
 
@@ -342,36 +363,37 @@ def run_git(repo_dir: Path, args: List[str]) -> str:
 - `git show --unified=3` - Diff do commit
 - `git config --get remote.origin.url` - URL do repositorio
 
-### `adapters/http.py`
+### `adapters/llm_structured.py`
 
-**Caminho:** `src/pullnotes/adapters/http.py`
+**Caminho:** `src/pullnotes/adapters/llm_structured.py`
 
-**Responsabilidade:** Cliente para Ollama/LLM
+**Responsabilidade:** Cliente LLM com saida estruturada usando LangChain + Ollama
 
 **Funcao Principal:**
 
 ```python
-def call_ollama(
+def call_llm_structured(
     model: str,
     prompt: str,
-    timeout_seconds: float | None = None
-) -> str:
+    output_schema: Type[BaseModel],
+    timeout_seconds: float = 600,
+    max_retries: int = 3
+) -> BaseModel:
     """
-    Chama modelo LLM via Ollama.
+    Chama LLM via Ollama com saida validada por schema Pydantic.
 
-    Args:
-        model: Nome do modelo (ex: deepseek-r1:8b)
-        prompt: Prompt completo
-        timeout_seconds: Timeout da requisicao
+    Estrategia:
+    1. Tenta saida estruturada nativa (tool calling)
+    2. Fallback: PydanticOutputParser com retry
 
-    Returns:
-        Resposta do modelo (texto limpo)
+    Returns: Instancia do output_schema validada
     """
 ```
 
 **Configuracao:**
 - Temperature: 0.2 (deterministico)
-- Timeout padrao: 10s (configuravel)
+- Timeout: configuravel (padrao 600s)
+- Retries: configuravel (padrao 3)
 
 ### `adapters/filesystem.py`
 
@@ -388,6 +410,49 @@ def call_ollama(
 | `repository_name(repo_dir)` | Extrai nome do repositorio |
 | `sanitize_filename(name)` | Remove caracteres invalidos |
 
+### `adapters/domain_definition.py`
+
+**Caminho:** `src/pullnotes/adapters/domain_definition.py`
+
+**Responsabilidade:** Extracao de contexto e ancoras do repositorio
+
+**Funcoes Principais:**
+
+| Funcao | Descricao |
+|--------|-----------|
+| `iter_repo_files(repo_dir, max_total_bytes)` | Itera arquivos do repo com limite de bytes |
+| `safe_read(path, max_bytes)` | Leitura segura de arquivos |
+| `build_repository_index(repo_dir, config)` | Cria indice textual do repositorio |
+| `top_keywords(text, n)` | Extrai keywords mais frequentes |
+| `extract_anchors(content)` | Detecta APIs, tabelas, eventos, servicos |
+
+### `adapters/domain_profile.py`
+
+**Caminho:** `src/pullnotes/adapters/domain_profile.py`
+
+**Responsabilidade:** Geracao e cache do perfil de dominio do projeto via LLM
+
+**Funcao Principal:**
+
+```python
+def build_domain_profile(
+    repo_dir: Path,
+    output_path: Path,
+    model: str,
+    config: dict,
+    refresh: bool = False
+) -> ProjectProfile:
+    """
+    Gera perfil de dominio JSON usando LLM com saida estruturada.
+
+    - Indexa arquivos do repositorio
+    - Extrai ancoras (keywords, artifacts)
+    - Chama LLM para gerar ProjectProfile Pydantic
+    - Cacheia resultado em JSON
+    - Retorna ProjectProfile validado
+    """
+```
+
 ### `adapters/prompt_debug.py`
 
 **Caminho:** `src/pullnotes/adapters/prompt_debug.py`
@@ -401,47 +466,9 @@ def call_ollama(
 | `set_prompt_output_dir(output_dir)` | Configura diretorio de saida para prompts |
 | `save_prompt(prompt, name, response)` | Salva prompt e resposta em arquivo |
 
-**Arquivos Gerados:**
-- Salvos em `<output_dir>/prompts/`
-- Formato: `{counter}_{timestamp}_{name}.txt`
+**Arquivos Gerados em `utils/prompts/`:**
+- Formato: `{counter}_{HHMMSS}_{name}.txt`
 - Conteudo: Prompt completo + Resposta do LLM
-
-**Uso:**
-```python
-from pullnotes.adapters.prompt_debug import set_prompt_output_dir, save_prompt
-
-# No inicio do workflow
-set_prompt_output_dir(output_dir)
-
-# Apos cada chamada LLM
-save_prompt(prompt, "commit_group_feat_pr", response_text)
-```
-
-### `adapters/domain_definition.py`
-
-**Caminho:** `src/pullnotes/adapters/domain_definition.py`
-
-**Responsabilidade:** Extracao de contexto do repositorio e geracao de XML de dominio
-
-**Funcoes Principais:**
-
-| Funcao | Descricao |
-|--------|-----------|
-| `iter_repo_files(repo_dir, max_total_bytes)` | Itera arquivos do repo |
-| `safe_read(path, max_bytes)` | Leitura segura de arquivos |
-| `build_repository_index(repo_dir, config)` | Cria indice do repositorio |
-| `top_keywords(text, n)` | Extrai keywords principais |
-| `extract_anchors(content)` | Detecta APIs, tables, events |
-| `fill_domain_anchors(template, anchors)` | Popula template XML |
-| `generate_domain_xml(repo_dir, template, xsd, model, config)` | Gera XML completo |
-| `call_llm_for_xml(prompt, model, xsd_path)` | Chama LLM com validacao |
-
-**Anchors Extraidos:**
-- Keywords (top N palavras)
-- API endpoints (REST patterns)
-- SQL tables
-- Events/handlers
-- Services
 
 ---
 
@@ -451,7 +478,7 @@ save_prompt(prompt, "commit_group_feat_pr", response_text)
 
 **Caminho:** `src/pullnotes/workflows/sync.py`
 
-**Responsabilidade:** Orquestracao principal do workflow
+**Responsabilidade:** Orquestracao principal do workflow em fases paralelas
 
 **Funcao Principal:**
 
@@ -460,30 +487,16 @@ def run_workflow(args: Namespace) -> int:
     """
     Executa workflow completo de geracao.
 
-    Etapas:
-    1. Validacao e setup
-    2. Coleta de commits (paralelo)
-    3. Preparacao de dominio (se release)
-    4. Classificacao de commits
-    5. Scoring de importancia
-    6. Geracao de relatorios
-    7. Sumarizacao via LLM
-    8. Composicao de templates
-    9. Exportacao de artefatos
+    Fase 0: Setup (config, paths, output structure)
+    Fase A: Paralelo - commits + domain profile
+    Fase B: Classificacao, scoring, agrupamento
+    Fase C: Paralelo - summaries PR + Release
+    Fase D: Campos via LLM (PR + Release em paralelo)
+    Fase E: Renderizacao + Exportacao
 
-    Returns:
-        0 se sucesso, 1 se erro
+    Returns: 0 se sucesso, 1 se erro
     """
 ```
-
-**Funcoes Auxiliares:**
-
-| Funcao | Descricao |
-|--------|-----------|
-| `_classify_commits(commits, config)` | Classifica lista de commits |
-| `_score_commits(commits, config)` | Pontua lista de commits |
-| `_prepare_domain_text(repo, config, model)` | Prepara XML de dominio |
-| `_generate_summaries_for_output(grouped, config, model, type)` | Gera sumarios |
 
 ---
 
@@ -509,12 +522,10 @@ def render_prompt_template(template: str, values: dict) -> str:
 
 | Arquivo | Proposito |
 |---------|-----------|
-| `commit_summary.txt` | Resumir commit individual |
-| `commit_group_summary_pr.txt` | Resumir grupo (tecnico/PR) |
-| `commit_group_summary_release.txt` | Resumir grupo (user-facing) |
-| `pr_fields.txt` | Gerar campos JSON do PR |
-| `release_fields.txt` | Gerar campos JSON de release |
-| `domain_xml.txt` | Preencher XML de dominio |
+| `commit_group_summary_pr.txt` | Resumir grupo de commits (tecnico/PR) |
+| `commit_group_summary_release.txt` | Resumir grupo de commits (user-facing/release) |
+| `domain_profile.txt` | Gerar perfil de dominio JSON do projeto |
+| `dynamic_fields.txt` | Preencher secoes dinamicas de PR e Release |
 
 ---
 
@@ -524,55 +535,10 @@ def render_prompt_template(template: str, values: dict) -> str:
 
 **Proposito:** Template markdown para Pull Request
 
-**Placeholders:**
-- `{{title}}` - Titulo do PR
-- `{{summary}}` - Resumo das mudancas
-- `{{changes_by_type}}` - Mudancas agrupadas por tipo
-- `{{risks}}` - Riscos identificados
-- `{{testing}}` - Instrucoes de teste
+Define secoes com instrucoes para o LLM. Secoes com checkboxes sao preservadas como conteudo estatico. A secao "Alteracoes" (ou "Changes") recebe automaticamente as mudancas agrupadas por tipo.
 
 ### `templates/release.md`
 
 **Proposito:** Template markdown para Release Notes
 
-**Placeholders:**
-- `{{version}}` - Numero da versao
-- `{{date}}` - Data de release
-- `{{executive_summary}}` - Resumo executivo
-- `{{highlights}}` - Destaques
-- `{{changes_by_type}}` - Mudancas agrupadas
-- `{{migration_notes}}` - Notas de migracao
-- `{{known_issues}}` - Problemas conhecidos
-
----
-
-## XML
-
-### `xml/dominio.xml`
-
-**Proposito:** Template de estrutura de dominio do repositorio
-
-**Estrutura:**
-```xml
-<domainProfile>
-    <repositoryName>{{repo_name}}</repositoryName>
-    <domain>{{domain_description}}</domain>
-    <entities>
-        <entity name="..." description="..."/>
-    </entities>
-    <domainAnchors>
-        <keywords>...</keywords>
-        <apiEndpoints>...</apiEndpoints>
-        <sqlTables>...</sqlTables>
-    </domainAnchors>
-</domainProfile>
-```
-
-### `xml/XSD_dominio.xml`
-
-**Proposito:** Schema de validacao para o XML de dominio
-
-**Validacoes:**
-- Estrutura obrigatoria (repositoryName, domain)
-- Tipos de dados
-- Elementos opcionais (entities, anchors)
+Define secoes com instrucoes para o LLM. O titulo inclui automaticamente o label de versao e data.

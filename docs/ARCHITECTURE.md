@@ -21,16 +21,17 @@ A arquitetura hexagonal separa o nucleo da aplicacao (dominio) das preocupacoes 
     |     ADAPTERS      |           |     ADAPTERS      |
     |   (Ports In)      |           |   (Ports Out)     |
     +-------------------+           +-------------------+
-    | - subprocess.py   |           | - http.py         |
+    | - subprocess.py   |           | - llm_structured  |
     | - filesystem.py   |           | - domain_def.py   |
-    +-------------------+           +-------------------+
-              |                               |
+    +-------------------+           | - domain_profile  |
+              |                     +-------------------+
               +---------------+---------------+
                               |
                     +---------v---------+
                     |   DOMAIN CORE     |
                     +-------------------+
                     | - models.py       |
+                    | - schemas.py      |
                     | - services/       |
                     | - errors.py       |
                     +-------------------+
@@ -42,9 +43,10 @@ A arquitetura hexagonal separa o nucleo da aplicacao (dominio) das preocupacoes 
 
 **Adaptadores de Saida (Driven Adapters):**
 - `adapters/subprocess.py` - Integracao com Git
-- `adapters/http.py` - Integracao com Ollama/LLM
+- `adapters/llm_structured.py` - Integracao com Ollama via LangChain (saida estruturada)
 - `adapters/filesystem.py` - Operacoes de I/O
-- `adapters/domain_definition.py` - Extracao de contexto
+- `adapters/domain_definition.py` - Extracao de contexto do repositorio
+- `adapters/domain_profile.py` - Geracao e cache do perfil de dominio
 
 ### 2. Clean Architecture (Camadas)
 
@@ -68,18 +70,21 @@ O projeto segue os principios de Clean Architecture com separacao clara de respo
                           |
 +-------------------------------------------------------+
 |                     Entities                           |
-|  (domain/models.py, domain/errors.py)                 |
+|  (domain/models.py, domain/schemas.py, errors.py)    |
 +-------------------------------------------------------+
 ```
 
 **Camada de Entities:**
 - `domain/models.py` - Dataclass `Commit` (entidade central)
+- `domain/schemas.py` - Schemas Pydantic para validacao estruturada
 - `domain/errors.py` - Excecoes de dominio
 
 **Camada de Use Cases:**
 - `domain/services/data_collection.py` - Coleta de commits
 - `domain/services/aggregation.py` - Classificacao e scoring
 - `domain/services/composition.py` - Composicao de templates
+- `domain/services/template_parser.py` - Parsing de templates markdown
+- `domain/services/dynamic_fields.py` - Geracao dinamica de schemas Pydantic
 - `domain/services/export.py` - Exportacao de artefatos
 
 **Camada de Interface Adapters:**
@@ -88,7 +93,7 @@ O projeto segue os principios de Clean Architecture com separacao clara de respo
 
 **Camada de Frameworks:**
 - `cli.py` - Parsing de argumentos
-- Bibliotecas externas (lxml, ollama)
+- Bibliotecas externas (pydantic, langchain, ollama)
 
 ### 3. Domain-Driven Design (DDD)
 
@@ -105,15 +110,20 @@ class Commit:
     change_type: str      # Contexto de dominio
     importance_score: float
     importance_band: str
+    diff_anchors: Optional[DiffAnchors]  # Value object
     # ...
 ```
+
+**Value Objects (via Pydantic):**
+- `DiffAnchors` - Ancoras semanticas extraidas do diff
+- `DiffKeyword`, `DiffArtifact` - Componentes das ancoras
+- `ProjectProfile`, `Domain`, `DomainAnchors` - Perfil do projeto
 
 **Servicos de Dominio:**
 - `aggregation.py` - Logica de classificacao e scoring
 - `composition.py` - Logica de construcao de documentos
-
-**Value Objects (implicitos):**
-- Campos compostos do Commit (files, additions, deletions)
+- `template_parser.py` - Parsing de templates em secoes estruturadas
+- `dynamic_fields.py` - Criacao de schemas Pydantic a partir de templates
 
 ## Diagrama de Dependencias
 
@@ -131,10 +141,11 @@ class Commit:
           data_collection  aggregation  composition
                |              |             |
                v              v             v
-          subprocess.py   http.py    filesystem.py
+          subprocess.py  llm_structured  filesystem.py
                |              |
                v              v
              [GIT]        [OLLAMA]
+                       (via LangChain)
 ```
 
 **Regra de Dependencia:** As dependencias sempre apontam para dentro, nunca para fora. O dominio nao conhece os adaptadores.
@@ -147,18 +158,22 @@ src/pullnotes/
 +-- domain/                    # NUCLEO (Clean Architecture Core)
 |   +-- models.py              # Entities
 |   +-- errors.py              # Domain Exceptions
-|   +-- domain_profile.py      # Domain Service
+|   +-- schemas.py             # Pydantic Schemas (Value Objects)
 |   +-- services/              # Use Cases
 |       +-- data_collection.py
 |       +-- aggregation.py
 |       +-- composition.py
+|       +-- template_parser.py
+|       +-- dynamic_fields.py
 |       +-- export.py
 |
 +-- adapters/                  # ADAPTADORES (Hexagonal Ports)
 |   +-- subprocess.py          # Git Adapter
-|   +-- http.py                # LLM Adapter
+|   +-- llm_structured.py      # LLM Adapter (LangChain + Ollama)
 |   +-- filesystem.py          # I/O Adapter
 |   +-- domain_definition.py   # Context Extraction Adapter
+|   +-- domain_profile.py      # Domain Profile Generation Adapter
+|   +-- prompt_debug.py        # Debug Adapter (prompts/respostas)
 |
 +-- workflows/                 # ORQUESTRACAO
 |   +-- sync.py                # Main Workflow Coordinator
@@ -194,19 +209,24 @@ src/pullnotes/
         |      domain/services/data_collection.py
         |             |
         |             v
+        +----> adapters/domain_profile.py (Perfil JSON)
+        |             |
+        |             v
         +----> domain/services/aggregation.py
         |             |
         |             v
-        +----> adapters/http.py (Ollama)
+        +----> adapters/llm_structured.py (Ollama/LangChain)
         |             |
         |             v
         +----> domain/services/composition.py
+        |      domain/services/template_parser.py
+        |      domain/services/dynamic_fields.py
         |             |
         |             v
         +----> domain/services/export.py
                       |
                       v
-               Arquivos de saida
+               Arquivos de saida (prs/, releases/, utils/)
 ```
 
 ## Beneficios da Arquitetura
@@ -221,7 +241,7 @@ src/pullnotes/
 
 | Extensao | Local | Descricao |
 |----------|-------|-----------|
-| Novo LLM Provider | `adapters/http.py` | Implementar novo cliente |
+| Novo LLM Provider | `adapters/llm_structured.py` | Implementar novo cliente estruturado |
 | Novo Output Format | `domain/services/export.py` | Adicionar exportador |
 | Nova Classificacao | `domain/services/aggregation.py` | Adicionar estrategia |
 | Novo Template | `templates/` | Criar template markdown |

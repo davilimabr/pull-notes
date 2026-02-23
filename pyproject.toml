@@ -28,3 +28,10 @@ py-modules = []
 
 [project.scripts]
 pullnotes = "pullnotes.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+markers = [
+    "ollama: requer Ollama rodando em localhost:11434",
+]

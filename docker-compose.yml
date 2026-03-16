@@ -13,23 +13,24 @@ services:
       retries: 5
       start_period: 30s
 
-  pullnotes:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  ollama-model-pull:
+    image: ollama/ollama:latest
     depends_on:
       ollama:
         condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    volumes:
-      - ${REPO_PATH:-.}:/repo:ro
-      - ${CONFIG_PATH:-./config.default.json}:/app/config.json:ro
-      - ./output:/app/output
-    entrypoint: ["pullnotes", "/repo", "--config", "/app/config.json", "--output-dir", "/app/output"]
-    command: ["--generate", "both"]
-    profiles:
-      - run
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3.5:9b}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "[ollama-model-pull] Iniciando download do modelo: $$OLLAMA_MODEL"
+        ollama pull $$OLLAMA_MODEL 2>&1 | while IFS= read -r line; do
+          echo "[ollama-model-pull] $$line"
+        done
+        echo "[ollama-model-pull] Download concluido: $$OLLAMA_MODEL"
+    restart: "no"
 
 volumes:
   ollama_data:

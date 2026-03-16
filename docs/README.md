@@ -13,6 +13,7 @@ Ferramenta CLI para geracao automatica de Pull Requests e Release Notes a partir
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuracao e variaveis |
 | [CLI.md](CLI.md) | Interface de linha de comando |
 | [INTEGRATIONS.md](INTEGRATIONS.md) | Integracoes externas (Git, Ollama) |
+| [ollama-gpu-cuda.md](ollama-gpu-cuda.md) | Configurar Ollama local para usar GPU NVIDIA (CUDA) |
 | [DATA_MODELS.md](DATA_MODELS.md) | Modelos de dados e estruturas |
 
 ## Visao Geral

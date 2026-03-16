@@ -5,23 +5,45 @@ Ferramenta local em Python para gerar descricoes de Pull Requests e Release Note
 ## Requisitos
 
 - Python 3.10+
+- Docker (para o Ollama)
 - Git instalado e acessivel no PATH
-- Ollama rodando localmente com o modelo configurado
 
-## Instalacao
+## Inicio rapido
 
-```bash
-pip install -e .
+**1. Instalar a ferramenta**
+
+Abra o PowerShell como administrador e execute:
+
+```powershell
+pip install .
 ```
 
-## Uso rapido
+**2. Subir o Ollama**
 
 ```bash
-# Gerar PR e Release Notes
-pullnotes /caminho/para/repo --config config.default.json --range v1.0..v1.1
+docker compose up -d
+```
 
-# Ou via modulo Python
-python -m pullnotes /caminho/para/repo --config config.default.json --range v1.0..v1.1
+**3. Executar**
+
+```bash
+pullnotes /caminho/para/repo --config config.default.json --generate both
+```
+
+Para um intervalo especifico de commits:
+
+```bash
+pullnotes /caminho/para/repo --config config.default.json --range v1.0..v1.1 --generate both
+```
+
+---
+
+## Instalacao para desenvolvimento
+
+Abra o PowerShell como administrador e execute:
+
+```powershell
+pip install -e .
 ```
 
 ## Saidas
@@ -62,10 +84,42 @@ O codigo esta organizado em camadas sob `src/pullnotes/`:
 
 ## Docker
 
+O Docker e usado apenas para subir o Ollama:
+
 ```bash
-# Rodar via Docker Compose (com Ollama integrado)
-docker-compose --profile run up
+docker compose up -d
 ```
+
+## Alternativa: Ollama local (sem Docker)
+
+Se preferir rodar o Ollama diretamente na maquina, sem Docker:
+
+**1. Instalar o Ollama**
+
+Baixe e instale em [ollama.com/download](https://ollama.com/download).
+
+**2. Baixar o modelo**
+
+```bash
+ollama pull qwen3.5:9b
+```
+
+> O modelo padrao usado pelo PullNotes e o `qwen3.5:9b`. O download pode levar alguns minutos dependendo da sua conexao (~4 GB).
+
+**3. Iniciar o servidor Ollama**
+
+```bash
+ollama serve
+```
+
+O servidor ficara disponivel em `http://localhost:11434`.
+
+**4. Executar o PullNotes normalmente**
+
+```bash
+pullnotes /caminho/para/repo --config config.default.json --generate both
+```
+
 
 ## Documentacao
 

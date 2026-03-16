@@ -27,14 +27,14 @@
   "diff": { "max_anchors_keywords": 10, "max_anchors_artifacts": 10 },
   "domain": {
     "output_path": "domain_profile.json",
-    "model": "qwen2.5:7b",
+    "model": "qwen3.5:9b",
     "max_total_bytes": 400000,
     "max_file_bytes": 40000
   },
   "templates": { "pr": "templates/pr.md", "release": "templates/release.md" },
   "output": { "dir": "C:\\Users\\Davi\\output-path-test" },
   "language": "pt-BR",
-  "llm_model": "qwen2.5:7b",
+  "llm_model": "qwen3.5:9b",
   "llm_timeout_seconds": 600,
   "llm_max_retries": 3,
   "alerts": { "none_text": "None." },

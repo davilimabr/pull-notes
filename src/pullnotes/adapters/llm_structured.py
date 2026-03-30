@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Type, TypeVar, Optional
 import logging
 
@@ -13,6 +15,33 @@ from langchain_core.output_parsers import PydanticOutputParser
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T', bound=BaseModel)
+
+_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
+
+
+def _extract_json(text: str) -> str:
+    """Extract JSON from text that may be wrapped in markdown code blocks."""
+    # Try to find JSON in a markdown code block first
+    match = _JSON_BLOCK_RE.search(text)
+    if match:
+        return match.group(1).strip()
+
+    # Try to find a raw JSON object or array
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start = text.find(start_char)
+        if start == -1:
+            continue
+        # Find the matching closing bracket by scanning from the end
+        end = text.rfind(end_char)
+        if end > start:
+            candidate = text[start:end + 1]
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                continue
+
+    return text.strip()
 
 
 class StructuredLLMClient:
@@ -30,6 +59,7 @@ class StructuredLLMClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self._llm: Optional[ChatOllama] = None
+        self._llm_json: Optional[ChatOllama] = None
         logger.debug("StructuredLLMClient created (model=%s, timeout=%.1fs, retries=%d)", model, timeout_seconds, max_retries)
 
     @property
@@ -43,6 +73,19 @@ class StructuredLLMClient:
             )
             logger.debug("ChatOllama initialized (model=%s)", self.model)
         return self._llm
+
+    @property
+    def llm_json(self) -> ChatOllama:
+        """Lazy initialization of LLM client with JSON mode forced."""
+        if self._llm_json is None:
+            self._llm_json = ChatOllama(
+                model=self.model,
+                temperature=self.temperature,
+                timeout=self.timeout_seconds,
+                format="json",
+            )
+            logger.debug("ChatOllama JSON-mode initialized (model=%s)", self.model)
+        return self._llm_json
 
     def invoke_structured(
         self,
@@ -85,36 +128,39 @@ class StructuredLLMClient:
         prompt: str,
         output_schema: Type[T],
     ) -> T:
-        """Fallback strategy using parser with manual retry and error feedback."""
+        """Fallback strategy using JSON-mode LLM with manual retry and error feedback."""
         parser = PydanticOutputParser(pydantic_object=output_schema)
 
         # Build prompt with format instructions
         format_instructions = parser.get_format_instructions()
         full_prompt = f"{prompt}\n\n{format_instructions}"
 
+        prompt_chars = len(full_prompt)
+        if prompt_chars > 15000:
+            logger.warning(
+                "Prompt is very large (%d chars) for schema %s. "
+                "Small models may struggle — consider a larger model or reducing context.",
+                prompt_chars, output_schema.__name__,
+            )
+
         last_error: Optional[Exception] = None
-        last_response: str = ""
 
         for attempt in range(self.max_retries):
             try:
-                if attempt > 0 and last_error:
+                if attempt > 0:
                     logger.debug("Retry attempt %d/%d for %s", attempt + 1, self.max_retries, output_schema.__name__)
-                    retry_prompt = (
-                        f"{full_prompt}\n\n"
-                        f"PREVIOUS ATTEMPT FAILED with error: {last_error}\n"
-                        f"Previous response was: {last_response[:500]}\n"
-                        f"Please fix the output and try again."
-                    )
-                else:
-                    retry_prompt = full_prompt
 
-                # Invoke LLM
-                raw_response = self.llm.invoke(retry_prompt)
+                # Use the same prompt on every attempt to avoid bloating context.
+                # Appending error feedback to large prompts causes small models
+                # to exceed their effective context and produce garbage.
+                raw_response = self.llm_json.invoke(full_prompt)
                 content = raw_response.content if hasattr(raw_response, 'content') else str(raw_response)
-                last_response = content
 
-                # Try to parse the response
-                result = parser.parse(content)
+                # Extract JSON in case model wrapped it in markdown or text
+                cleaned = _extract_json(content)
+
+                # Try to parse the cleaned response
+                result = parser.parse(cleaned)
                 logger.debug(f"Parser succeeded on attempt {attempt + 1} for {output_schema.__name__}")
                 return result
 

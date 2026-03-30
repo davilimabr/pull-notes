@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 from .domain_definition import (
     build_repository_index,
     extract_anchors,
-    build_context_snippets,
     DEFAULT_MAX_TOTAL_BYTES,
     DEFAULT_MAX_FILE_BYTES,
 )
@@ -87,14 +86,10 @@ def generate_domain_profile(
     anchors = extract_anchors(index)
     anchors_pydantic = _anchors_to_pydantic(anchors)
 
-    repo_context = build_context_snippets(index, budget=max_total_bytes)
-    logger.debug("Context snippets: %d chars", len(repo_context))
-
-    # Create prompt with pre-filled anchors
+    # Create prompt with pre-filled anchors only (no full file content)
     prompt = load_prompt(
         "domain_profile",
         {
-            "repo_context": repo_context,
             "pre_filled_anchors": anchors_pydantic.model_dump_json(indent=2),
             "language_hint": build_language_hint(language),
         },

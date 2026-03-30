@@ -130,7 +130,7 @@ class TestInvokeWithParserRetry:
         assert mock_llm.invoke.call_count == 2
 
     @patch("pullnotes.adapters.llm_structured.ChatOllama")
-    def test_retry_prompt_includes_error(self, mock_ollama_cls):
+    def test_retry_uses_same_prompt(self, mock_ollama_cls):
         mock_llm = MagicMock()
         mock_ollama_cls.return_value = mock_llm
 
@@ -143,9 +143,10 @@ class TestInvokeWithParserRetry:
         client = StructuredLLMClient(model="test", max_retries=3)
         client._invoke_with_parser_retry("prompt", SimpleSchema)
 
-        # Second call should include error feedback
+        # Retries should use the same prompt (no bloat from error feedback)
+        first_call_prompt = mock_llm.invoke.call_args_list[0][0][0]
         second_call_prompt = mock_llm.invoke.call_args_list[1][0][0]
-        assert "PREVIOUS ATTEMPT FAILED" in second_call_prompt
+        assert first_call_prompt == second_call_prompt
 
 
 class TestLLMProperty:

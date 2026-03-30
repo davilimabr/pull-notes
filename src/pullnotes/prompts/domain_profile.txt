@@ -2,13 +2,10 @@
 
 You are analyzing a software repository to extract domain information.
 
-REPOSITORY CONTEXT:
-{{repo_context}}
-
-PRE-FILLED ANCHORS (extracted automatically from code):
+DOMAIN ANCHORS (extracted automatically from code):
 {{pre_filled_anchors}}
 
-Based on the repository context above, generate a complete ProjectProfile.
+Based on the domain anchors above, generate a complete ProjectProfile.
 
 RULES:
 1. Use only information present in the repository (README, docs, code, configs).

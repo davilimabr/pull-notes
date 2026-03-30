@@ -13,7 +13,6 @@ Ferramenta CLI para geracao automatica de Pull Requests e Release Notes a partir
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuracao e variaveis |
 | [CLI.md](CLI.md) | Interface de linha de comando |
 | [INTEGRATIONS.md](INTEGRATIONS.md) | Integracoes externas (Git, Ollama) |
-| [ollama-gpu-cuda.md](ollama-gpu-cuda.md) | Configurar Ollama local para usar GPU NVIDIA (CUDA) |
 | [DATA_MODELS.md](DATA_MODELS.md) | Modelos de dados e estruturas |
 
 ## Visao Geral
@@ -105,11 +104,23 @@ lxml                # XML parsing (dependencia legada)
 git clone <repo-url>
 cd pull-notes
 
-# Instalar em modo desenvolvimento
-pip install -e .
+# Opcao A: Ollama local (instala Ollama + modelo + pacote)
+bash setup-local.sh
 
-# Configurar Ollama (se ainda nao configurado)
-ollama pull qwen2.5:7b
+# Opcao B: Ollama via Docker (sobe container + modelo + pacote)
+bash setup-docker.sh
+```
+
+### Instalacao manual
+
+```bash
+pip install .
+
+# Ollama local
+ollama pull qwen2.5:14b
+
+# Ou via Docker
+docker compose up -d
 ```
 
 ## Uso Basico

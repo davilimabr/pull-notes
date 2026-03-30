@@ -5,26 +5,34 @@ Ferramenta local em Python para gerar descricoes de Pull Requests e Release Note
 ## Requisitos
 
 - Python 3.10+
-- Docker (para o Ollama)
 - Git instalado e acessivel no PATH
+- Ollama (local ou via Docker)
 
-## Inicio rapido
+## Setup rapido
 
-**1. Instalar a ferramenta**
+Escolha **uma** das opcoes abaixo. Os scripts instalam o Ollama, baixam o modelo configurado e instalam o pacote Python automaticamente.
 
-Abra o PowerShell como administrador e execute:
-
-```powershell
-pip install .
-```
-
-**2. Subir o Ollama**
+### Opcao A: Ollama local (sem Docker)
 
 ```bash
-docker compose up -d
+bash setup-local.sh
 ```
 
-**3. Executar**
+Instala o Ollama na maquina, baixa o modelo definido em `config.default.json` e instala o pacote `pullnotes`.
+
+### Opcao B: Ollama via Docker
+
+```bash
+bash setup-docker.sh
+```
+
+Sobe o Ollama via Docker Compose, baixa o modelo definido em `config.default.json` e instala o pacote `pullnotes`.
+
+> Requer [Docker](https://docs.docker.com/get-docker/) instalado.
+
+### Executar
+
+Apos o setup, use normalmente:
 
 ```bash
 pullnotes /caminho/para/repo --config config.default.json --generate both
@@ -38,11 +46,29 @@ pullnotes /caminho/para/repo --config config.default.json --range v1.0..v1.1 --g
 
 ---
 
+## Instalacao manual
+
+Se preferir instalar sem os scripts:
+
+**1. Instalar o pacote**
+
+```bash
+pip install .
+```
+
+**2. Subir o Ollama** (Docker ou local)
+
+```bash
+# Docker
+docker compose up -d
+
+# Ou local (requer Ollama instalado: https://ollama.com/download)
+ollama pull qwen2.5:14b
+```
+
 ## Instalacao para desenvolvimento
 
-Abra o PowerShell como administrador e execute:
-
-```powershell
+```bash
 pip install -e .
 ```
 
@@ -89,37 +115,6 @@ O Docker e usado apenas para subir o Ollama:
 ```bash
 docker compose up -d
 ```
-
-## Alternativa: Ollama local (sem Docker)
-
-Se preferir rodar o Ollama diretamente na maquina, sem Docker:
-
-**1. Instalar o Ollama**
-
-Baixe e instale em [ollama.com/download](https://ollama.com/download).
-
-**2. Baixar o modelo**
-
-```bash
-ollama pull qwen3.5:9b
-```
-
-> O modelo padrao usado pelo PullNotes e o `qwen3.5:9b`. O download pode levar alguns minutos dependendo da sua conexao (~4 GB).
-
-**3. Iniciar o servidor Ollama**
-
-```bash
-ollama serve
-```
-
-O servidor ficara disponivel em `http://localhost:11434`.
-
-**4. Executar o PullNotes normalmente**
-
-```bash
-pullnotes /caminho/para/repo --config config.default.json --generate both
-```
-
 
 ## Documentacao
 

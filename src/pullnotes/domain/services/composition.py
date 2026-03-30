@@ -53,7 +53,7 @@ def build_version_label(version_override: str, revision_range: str | None, relea
     except KeyError as exc:
         raise SystemExit(f"Invalid release.version_template placeholder: {exc}") from exc
     if not label:
-        raise SystemExit("Release version label is empty. Provide --version or set release.version_template.")
+        label = "0.0.1"
     return label
 
 

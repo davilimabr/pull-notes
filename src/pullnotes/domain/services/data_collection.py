@@ -137,6 +137,12 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
         try:
             log_text = run_git(repo_dir, retry_args)
         except RuntimeError as retry_exc:
+            if "unknown revision" in str(exc):
+                branches = revision_range.split("..")
+                raise RuntimeError(
+                    f"Could not find branches for range '{revision_range}' in repository '{repo_dir.name}'. "
+                    f"Make sure the branches {', '.join(repr(b) for b in branches)} exist locally or on the remote."
+                ) from retry_exc
             raise RuntimeError(f"{exc} ; fallback with '{origin_range}' failed: {retry_exc}") from retry_exc
 
     commits = parse_git_log(log_text)

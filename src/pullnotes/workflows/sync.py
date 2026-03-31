@@ -146,7 +146,10 @@ def run_workflow(args) -> int:
                 _prepare_domain_profile, repo_dir, output_paths['utils'], config["domain"], config
             )
 
-        commits = commits_future.result()
+        try:
+            commits = commits_future.result()
+        except RuntimeError as exc:
+            raise SystemExit(str(exc))
         logger.debug("Fetched %d commits", len(commits))
         if domain_future:
             domain_profile = domain_future.result()

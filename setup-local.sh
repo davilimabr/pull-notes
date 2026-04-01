@@ -3,6 +3,7 @@
 # Setup PullNotes com Ollama LOCAL (sem Docker)
 # =============================================================================
 set -euo pipefail
+trap 'echo ""; echo "[ERRO] Setup falhou."; read -n 1 -s -r -p "Pressione qualquer tecla para fechar..."; echo ""' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="$SCRIPT_DIR/config.default.json"
@@ -71,3 +72,6 @@ echo ""
 echo " Uso:"
 echo "   pullnotes /caminho/repo --config config.default.json --generate both"
 echo "============================================="
+echo ""
+read -n 1 -s -r -p "Pressione qualquer tecla para fechar..."
+echo ""

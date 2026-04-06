@@ -1,18 +1,18 @@
 {
   "commit_types": {
-    "feat": { "label": "Funcionalidades", "patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"] },
+    "feat": { "label": "Novas funcionalidades", "patterns": ["\\bfeat\\b", "\\bfeature\\b", "\\badd\\b"] },
     "fix": { "label": "Ajustes", "patterns": ["\\bfix\\b", "\\bbugfix\\b"] },
     "docs": { "label": "Documentação", "patterns": ["\\bdocs\\b"] },
     "refactor": { "label": "Refatoração", "patterns": ["\\brefactor\\b"] },
     "perf": { "label": "Performance", "patterns": ["\\bperf\\b"] },
     "test": { "label": "Testes", "patterns": ["\\btest\\b", "\\btests\\b"] },
-    "build": { "label": "Build", "patterns": ["\\bbuild\\b"] },
+    "build": { "label": "Ajustes de Build", "patterns": ["\\bbuild\\b"] },
     "ci": { "label": "CI", "patterns": ["\\bci\\b"] },
     "style": { "label": "Estilo", "patterns": ["\\bstyle\\b"] },
-    "chore": { "label": "chore", "patterns": ["\\bchore\\b"] },
-    "revert": { "label": "revert", "patterns": ["\\brevert\\b"] }
+    "chore": { "label": "Alterações Rotineiras", "patterns": ["\\bchore\\b"] },
+    "revert": { "label": "Reversão", "patterns": ["\\brevert\\b"] }
   },
-  "other_label": "Other",
+  "other_label": "Outros",
   "importance": {
     "weight_lines": 0.02,
     "weight_files": 0.6,
@@ -32,7 +32,7 @@
     "max_file_bytes": 40000
   },
   "templates": { "pr": "templates/pr.md", "release": "templates/release.md" },
-  "output": { "dir": "C:\\Users\\Davi\\output-path-test" },
+  "output": { "dir": "C:\\Users\\Davi\\output" },
   "language": "pt-BR",
   "llm_model": "qwen2.5:14b",
   "llm_timeout_seconds": 600,

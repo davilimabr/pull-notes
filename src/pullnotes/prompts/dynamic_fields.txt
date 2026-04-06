@@ -34,3 +34,5 @@ Each field corresponds to a section in the output document. The description expl
 
 IMPORTANT: Return ONLY a JSON object with this exact structure (do not include any other text):
 {{json_example}}
+
+{{language_reminder}}

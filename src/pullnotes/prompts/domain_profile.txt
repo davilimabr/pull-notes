@@ -24,3 +24,5 @@ RULES:
 {{language_hint}}
 
 Return ONLY the JSON object matching the ProjectProfile schema.
+
+{{language_reminder}}

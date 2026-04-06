@@ -117,7 +117,7 @@ class TestBuildDynamicPrompt:
         prompt = build_dynamic_prompt(
             sample_dynamic_sections, "pt-br", "summaries", "changes"
         )
-        assert "pt-br" in prompt
+        assert "pt-BR" in prompt
 
     def test_includes_anti_hallucination(self, sample_dynamic_sections):
         prompt = build_dynamic_prompt(

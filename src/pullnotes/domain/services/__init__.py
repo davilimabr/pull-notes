@@ -3,6 +3,7 @@
 from .aggregation import (
     build_convention_report,
     build_language_hint,
+    build_language_reminder,
     classify_commit,
     compute_importance,
     group_commits_by_type,
@@ -22,6 +23,7 @@ __all__ = [
     "build_convention_report",
     "build_fields_from_template",
     "build_language_hint",
+    "build_language_reminder",
     "build_version_label",
     "classify_commit",
     "compute_importance",

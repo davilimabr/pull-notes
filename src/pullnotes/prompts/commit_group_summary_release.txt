@@ -30,3 +30,5 @@ Do NOT include commit SHA or any other metadata in the output.
 
 Commit list:
 {{commit_blocks}}
+
+{{language_reminder}}

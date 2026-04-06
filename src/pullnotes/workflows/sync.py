@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict
 
 from ..adapters.filesystem import get_repository_name, resolve_cli_or_absolute, resolve_repo_path
+from ..adapters.subprocess import PackfileTooLargeError
 from ..adapters.domain_profile import generate_domain_profile, save_domain_profile, load_domain_profile
 from ..adapters.llm_structured import StructuredLLMClient
 from ..adapters.prompt_debug import set_prompt_output_dir
@@ -148,6 +149,8 @@ def run_workflow(args) -> int:
 
         try:
             commits = commits_future.result()
+        except PackfileTooLargeError as exc:
+            raise SystemExit(f"Git packfile error: {exc}")
         except RuntimeError as exc:
             raise SystemExit(str(exc))
         logger.debug("Fetched %d commits", len(commits))

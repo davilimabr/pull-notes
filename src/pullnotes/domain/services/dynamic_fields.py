@@ -7,7 +7,7 @@ from typing import List, Type
 from pydantic import BaseModel, Field, create_model
 
 from .template_parser import TemplateSection
-from .aggregation import build_language_hint
+from .aggregation import build_language_hint, build_language_reminder
 from ...prompts import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,7 @@ def build_dynamic_prompt(
     prompt = load_prompt("dynamic_fields", {
         "template_type": template_type,
         "language_hint": language_hint,
+        "language_reminder": build_language_reminder(language),
         "sections_block": sections_block,
         "extra_context": extra_context,
         "commit_summaries": commit_summaries,

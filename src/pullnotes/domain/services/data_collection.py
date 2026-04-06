@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional
 
-from ...adapters.subprocess import run_git
+from ...adapters.subprocess import PackfileTooLargeError, run_git
 from ...adapters.domain_definition import top_keywords, API_METHOD_RE, EVENT_NAME_RE, SERVICE_NAME_RE
 from ..models import COMMIT_MARKER, GIT_FORMAT, Commit, is_sensitive_file
 from ..schemas import DiffAnchors, DiffKeyword, DiffArtifact
@@ -148,10 +148,19 @@ def get_commits(repo_dir: Path, revision_range: Optional[str], since: Optional[s
     commits = parse_git_log(log_text)
 
     # Extrai body e diff de forma assíncrona usando ThreadPoolExecutor
+    _packfile_warned = False
+
     def fetch_commit_details(commit: Commit) -> tuple[Commit, str, str]:
         """Busca body e diff de um commit."""
-        body = run_git(repo_dir, ["show", "-s", "--format=%B", commit.sha]).strip()
-        diff = run_git(repo_dir, ["show", "--pretty=format:", "--unified=3", "--no-color", commit.sha])
+        nonlocal _packfile_warned
+        try:
+            body = run_git(repo_dir, ["show", "-s", "--format=%B", commit.sha]).strip()
+            diff = run_git(repo_dir, ["show", "--pretty=format:", "--unified=3", "--no-color", commit.sha])
+        except PackfileTooLargeError as exc:
+            if not _packfile_warned:
+                _packfile_warned = True
+                logger.warning("git show failed due to packfile size limit — diffs will be skipped.\n%s", exc)
+            return commit, "", ""
         return commit, body, diff
 
     logger.debug("Fetching body and diff for %d commits in parallel...", len(commits))

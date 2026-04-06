@@ -108,8 +108,32 @@ def group_commits_by_type(commits: List[Commit], config: Dict) -> List[Tuple[str
     return grouped
 
 
+_LANGUAGE_NAMES = {
+    "pt": "português brasileiro (pt-BR)",
+    "en": "English (en)",
+    "es": "español (es)",
+}
+
+
+def _resolve_language_name(language: str) -> str:
+    prefix = language.split("-")[0].lower() if language else "en"
+    return _LANGUAGE_NAMES.get(prefix, language)
+
+
 def build_language_hint(language: str) -> str:
-    return f"Write the response in {language}."
+    name = _resolve_language_name(language)
+    return (
+        f"MANDATORY: All generated text MUST be written in {name}. "
+        f"Do NOT write in any other language.\n"
+        f"OBRIGATÓRIO: Todo o texto gerado DEVE ser escrito em {name}. "
+        f"NÃO escreva em nenhum outro idioma."
+    )
+
+
+def build_language_reminder(language: str) -> str:
+    """Short reminder to append at the end of prompts (recency effect)."""
+    name = _resolve_language_name(language)
+    return f"REMINDER: Your ENTIRE response must be in {name}. No exceptions."
 
 
 def _format_diff_anchors_for_prompt(commit: Commit) -> str:
@@ -230,6 +254,7 @@ def summarize_commit_group(
         prompt_name,
         {
             "language_hint": build_language_hint(config["language"]),
+            "language_reminder": build_language_reminder(config["language"]),
             "change_type_label": label,
             "commit_blocks": _build_commit_blocks(commits, diff_cfg),
         },

@@ -28,7 +28,7 @@ from .domain_definition import (
     DEFAULT_MAX_TOTAL_BYTES,
     DEFAULT_MAX_FILE_BYTES,
 )
-from ..domain.services.aggregation import build_language_hint
+from ..domain.services.aggregation import build_language_hint, build_language_reminder
 
 
 def _anchors_to_pydantic(anchors: Dict[str, List[tuple]]) -> DomainAnchors:
@@ -92,6 +92,7 @@ def generate_domain_profile(
         {
             "pre_filled_anchors": anchors_pydantic.model_dump_json(indent=2),
             "language_hint": build_language_hint(language),
+            "language_reminder": build_language_reminder(language),
         },
     )
 

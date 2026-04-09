@@ -171,7 +171,8 @@ def run_workflow(args) -> int:
     grouped_commits = group_commits_by_type(commits, config)
     logger.debug("Grouped commits into %d type groups", len(grouped_commits))
 
-    export_commits(commits, output_paths['utils'])
+    if args.debug:
+        export_commits(commits, output_paths['utils'])
 
     client = StructuredLLMClient(
         model=llm_model,

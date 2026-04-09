@@ -135,7 +135,8 @@ def run_workflow(args) -> int:
     logger.debug("Output dir: %s, repo name: %s", base_output_dir, repo_name)
 
     output_paths = create_output_structure(base_output_dir, repo_name)
-    set_prompt_output_dir(output_paths['utils'])
+    if args.debug:
+        set_prompt_output_dir(output_paths['utils'])
 
     domain_profile = None
     logger.debug("Fetching commits and domain profile in parallel...")

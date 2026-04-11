@@ -107,19 +107,46 @@ fi
 
 echo "[INFO] Modelo selecionado: $MODEL"
 
+# --- Detectar sistema operacional --------------------------------------------
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
+    *)                    IS_WINDOWS=0 ;;
+esac
+
 # --- Instalar Ollama ---------------------------------------------------------
 if command -v ollama &>/dev/null; then
     echo "[INFO] Ollama ja instalado: $(ollama --version)"
 else
     echo "[INFO] Instalando Ollama..."
-    curl -fsSL https://ollama.com/install.sh | sh
+    if [ "$IS_WINDOWS" -eq 1 ]; then
+        echo "[INFO] Executando instalador do Ollama via PowerShell..."
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://ollama.com/install.ps1 | iex"
+        # Adicionar Ollama ao PATH da sessao atual
+        OLLAMA_BIN_WIN="${LOCALAPPDATA:-$USERPROFILE/AppData/Local}/Programs/Ollama"
+        if [ -d "$OLLAMA_BIN_WIN" ]; then
+            export PATH="$OLLAMA_BIN_WIN:$PATH"
+        fi
+        if ! command -v ollama &>/dev/null; then
+            echo "[ERRO] Ollama foi instalado mas nao esta no PATH desta sessao."
+            echo "       Feche este terminal, abra um novo e rode o script novamente."
+            exit 1
+        fi
+    else
+        curl -fsSL https://ollama.com/install.sh | sh
+    fi
     echo "[INFO] Ollama instalado com sucesso."
 fi
 
 # --- Iniciar Ollama se nao estiver rodando -----------------------------------
 if ! ollama list &>/dev/null 2>&1; then
     echo "[INFO] Iniciando servidor Ollama em background..."
-    ollama serve &>/dev/null &
+    if [ "$IS_WINDOWS" -eq 1 ]; then
+        # No Windows, o instalador normalmente inicia o servico automaticamente.
+        # Caso nao esteja rodando, tentamos iniciar via start para desacoplar do shell.
+        start "" ollama serve >/dev/null 2>&1 || ollama serve >/dev/null 2>&1 &
+    else
+        ollama serve &>/dev/null &
+    fi
     sleep 3
 fi
 

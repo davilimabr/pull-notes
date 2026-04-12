@@ -10,11 +10,26 @@ from typing import Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _default_config_path() -> Path:
+    """Return the default config.default.json from the pull-notes repository."""
+    return _REPO_ROOT / "config.default.json"
+
+
 def load_config(path: Optional[str]) -> Dict:
-    """Load configuration JSON file."""
+    """Load configuration JSON file.
+
+    When *path* is empty the bundled ``config.default.json`` shipped with
+    the pull-notes repository is used automatically.
+    """
     if not path:
-        raise SystemExit("Config path is required. Use --config to provide a JSON file.")
-    config_path = Path(path)
+        config_path = _default_config_path()
+        logger.debug("No --config provided, using default: %s", config_path)
+    else:
+        config_path = Path(path)
+
     if not config_path.exists():
         raise SystemExit(f"Config not found: {config_path}")
     raw = json.loads(config_path.read_text(encoding="utf-8"))
@@ -57,7 +72,7 @@ def validate_config(config: Dict, *, generate: str) -> None:
     require(("importance", "weight_lines"))
     require(("importance", "weight_files"))
     keyword_bonus = require(("importance", "keyword_bonus"), allow_empty=True)
-    require(("output", "dir"))
+    require(("output", "dir"), allow_empty=True)
 
     if generate in {"pr", "both"}:
         require(("templates", "pr"))

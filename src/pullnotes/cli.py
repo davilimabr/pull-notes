@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--range", dest="revision_range", help="Git revision range (e.g. v1.0..v1.1)")
     parser.add_argument("--since", help="Git since date (e.g. 2024-01-01)")
     parser.add_argument("--until", help="Git until date (e.g. 2024-01-31)")
-    parser.add_argument("--config", required=True, help="Path to JSON config file")
+    parser.add_argument("--config", default="", help="Path to JSON config file (default: config.default.json from pull-notes repo)")
     parser.add_argument("--generate", choices=["pr", "release", "both"], default="both")
     parser.add_argument("--version", default="", help="Release version label")
     parser.add_argument("--output-dir", default="", help="Override output directory")

@@ -130,8 +130,15 @@ def run_workflow(args) -> int:
     llm_model = args.model or config["llm_model"]
     logger.debug("Config loaded. LLM model: %s, generate: %s", llm_model, args.generate)
 
-    base_output_dir = resolve_repo_path(repo_dir, args.output_dir or config["output"]["dir"])
     repo_name = get_repository_name(repo_dir)
+
+    output_dir_value = args.output_dir or config["output"].get("dir", "")
+    if output_dir_value:
+        base_output_dir = resolve_repo_path(repo_dir, output_dir_value)
+    else:
+        base_output_dir = Path(Path.home().anchor) / "output"
+        print(f"[pull-notes] Nenhum output dir configurado. Salvando em: {base_output_dir / repo_name}")
+
     logger.debug("Output dir: %s, repo name: %s", base_output_dir, repo_name)
 
     output_paths = create_output_structure(base_output_dir, repo_name)
